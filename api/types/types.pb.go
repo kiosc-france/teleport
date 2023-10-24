@@ -126,6 +126,9 @@ func (DatabaseTLSMode) EnumDescriptor() ([]byte, []int) {
 }
 
 // PrivateKeyType is the storage type of a private key.
+// Example YAML:
+// ---
+// 0
 type PrivateKeyType int32
 
 const (
@@ -191,7 +194,7 @@ func (ProxyListenerMode) EnumDescriptor() ([]byte, []int) {
 }
 
 // RoutingStrategy determines the strategy used to route to nodes.
-// YAML Example:
+// Example YAML:
 // ---
 // 0
 type RoutingStrategy int32
@@ -222,6 +225,9 @@ func (RoutingStrategy) EnumDescriptor() ([]byte, []int) {
 }
 
 // UserTokenUsage contains additional information about the intended usage of a user token.
+// Example YAML:
+// ---
+// 0
 type UserTokenUsage int32
 
 const (
@@ -259,6 +265,9 @@ func (UserTokenUsage) EnumDescriptor() ([]byte, []int) {
 }
 
 // RequestState represents the state of a request for escalated privilege.
+// Example YAML:
+// ---
+// 0
 type RequestState int32
 
 const (
@@ -382,6 +391,9 @@ func (CreateDatabaseUserMode) EnumDescriptor() ([]byte, []int) {
 }
 
 // CertExtensionMode specifies the type of extension to use in the cert.
+// Example YAML:
+// ---
+// 0
 type CertExtensionMode int32
 
 const (
@@ -408,6 +420,9 @@ func (CertExtensionMode) EnumDescriptor() ([]byte, []int) {
 
 // CertExtensionType represents the certificate type the extension is for.
 // Currently only ssh is supported.
+// Example YAML:
+// ---
+// ssh
 type CertExtensionType int32
 
 const (
@@ -707,6 +722,9 @@ func (CertAuthoritySpecV2_SigningAlgType) EnumDescriptor() ([]byte, []int) {
 }
 
 // FIPSEndpointState represents an AWS FIPS endpoint state.
+// Example YAML:
+// ---
+// 0
 type ClusterAuditConfigSpecV2_FIPSEndpointState int32
 
 const (
@@ -5118,6 +5136,9 @@ func (m *ClusterNetworkingConfigSpecV2) XXX_DiscardUnknown() {
 var xxx_messageInfo_ClusterNetworkingConfigSpecV2 proto.InternalMessageInfo
 
 // TunnelStrategyV1 defines possible tunnel strategy types.
+// Example YAML:
+// ---
+// agent_connection_count: 2
 type TunnelStrategyV1 struct {
 	// Types that are valid to be assigned to Strategy:
 	//
