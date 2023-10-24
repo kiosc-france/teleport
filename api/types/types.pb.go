@@ -314,6 +314,9 @@ func (RequestState) EnumDescriptor() ([]byte, []int) {
 // CreateHostUserMode determines whether host user creation should be
 // disabled or if host users should be cleaned up or kept after
 // sessions end.
+// Example YAML:
+// ---
+// 0
 type CreateHostUserMode int32
 
 const (
@@ -355,6 +358,9 @@ func (CreateHostUserMode) EnumDescriptor() ([]byte, []int) {
 
 // CreateDatabaseUserMode determines whether database user creation should be
 // disabled or if users should be cleaned up or kept after sessions end.
+// Example YAML:
+// ---
+// 0
 type CreateDatabaseUserMode int32
 
 const (
@@ -512,6 +518,9 @@ func (AlertSeverity) EnumDescriptor() ([]byte, []int) {
 
 // RequireMFAType is a type of MFA requirement enforced outside of login,
 // such as per-session MFA or per-request PIV touch.
+// Example YAML:
+// ---
+// 0
 type RequireMFAType int32
 
 const (
