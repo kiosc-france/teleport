@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -877,43 +876,17 @@ func (c *HTTPClient) ValidateGithubAuthCallback(ctx context.Context, q url.Value
 // GetSessionChunk allows clients to receive a byte array (chunk) from a recorded
 // session stream, starting from 'offset', up to 'max' in length. The upper bound
 // of 'max' is set to events.MaxChunkBytes
+//
+// Deprecated: use StreamSessionEvents API instead
+// TODO(zmb3): remove from ClientI interface
 func (c *HTTPClient) GetSessionChunk(namespace string, sid session.ID, offsetBytes, maxBytes int) ([]byte, error) {
-	if namespace == "" {
-		return nil, trace.BadParameter(MissingNamespaceError)
-	}
-	response, err := c.Get(context.TODO(), c.Endpoint("namespaces", namespace, "sessions", string(sid), "stream"), url.Values{
-		"offset": []string{strconv.Itoa(offsetBytes)},
-		"bytes":  []string{strconv.Itoa(maxBytes)},
-	})
-	if err != nil {
-		log.Error(err)
-		return nil, trace.Wrap(err)
-	}
-	return response.Bytes(), nil
+	return nil, trace.NotImplemented("GetSessionChunk is deprecated, clients should prefer StreamSessionEvents")
 }
 
-// Returns events that happen during a session sorted by time
-// (oldest first).
-//
-// afterN allows to filter by "newer than N" value where N is the cursor ID
-// of previously returned bunch (good for polling for latest)
-func (c *HTTPClient) GetSessionEvents(namespace string, sid session.ID, afterN int) (retval []events.EventFields, err error) {
-	if namespace == "" {
-		return nil, trace.BadParameter(MissingNamespaceError)
-	}
-	query := make(url.Values)
-	if afterN > 0 {
-		query.Set("after", strconv.Itoa(afterN))
-	}
-	response, err := c.Get(context.TODO(), c.Endpoint("namespaces", namespace, "sessions", string(sid), "events"), query)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	retval = make([]events.EventFields, 0)
-	if err := json.Unmarshal(response.Bytes(), &retval); err != nil {
-		return nil, trace.Wrap(err)
-	}
-	return retval, nil
+// Deprecated: use StreamSessionEvents API instead.
+// TODO(zmb3): remove from ClientI interface
+func (c *HTTPClient) GetSessionEvents(namespace string, sid session.ID, afterN int) ([]events.EventFields, error) {
+	return nil, trace.NotImplemented("GetSessionEvents is deprecated, clients should prefer StreamSessionEvents")
 }
 
 // GetNamespaces returns a list of namespaces
