@@ -3222,6 +3222,10 @@ func (a *ServerWithRoles) UpsertOIDCConnector(ctx context.Context, connector typ
 		return nil, trace.AccessDenied("OIDC is only available in Teleport Enterprise")
 	}
 
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
 	upserted, err := a.authServer.UpsertOIDCConnector(ctx, connector)
 	return upserted, trace.Wrap(err)
 }
@@ -3238,6 +3242,10 @@ func (a *ServerWithRoles) UpdateOIDCConnector(ctx context.Context, connector typ
 		return nil, trace.AccessDenied("OIDC is only available in Teleport Enterprise")
 	}
 
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
 	updated, err := a.authServer.UpdateOIDCConnector(ctx, connector)
 	return updated, trace.Wrap(err)
 }
@@ -3252,6 +3260,10 @@ func (a *ServerWithRoles) CreateOIDCConnector(ctx context.Context, connector typ
 		// we can't currently propagate wrapped errors across the gRPC boundary,
 		// and we want tctl to display a clean user-facing message in this case
 		return nil, trace.AccessDenied("OIDC is only available in Teleport Enterprise")
+	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return nil, trace.Wrap(err)
 	}
 
 	creted, err := a.authServer.CreateOIDCConnector(ctx, connector)
@@ -3287,6 +3299,10 @@ func (a *ServerWithRoles) GetOIDCConnectors(ctx context.Context, withSecrets boo
 
 func (a *ServerWithRoles) CreateOIDCAuthRequest(ctx context.Context, req types.OIDCAuthRequest) (*types.OIDCAuthRequest, error) {
 	if err := a.action(apidefaults.Namespace, types.KindOIDCRequest, types.VerbCreate); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
 		return nil, trace.Wrap(err)
 	}
 
@@ -3339,6 +3355,11 @@ func (a *ServerWithRoles) DeleteOIDCConnector(ctx context.Context, connectorID s
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindOIDC, types.VerbDelete); err != nil {
 		return trace.Wrap(err)
 	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return trace.Wrap(err)
+	}
+
 	return a.authServer.DeleteOIDCConnector(ctx, connectorID)
 }
 
@@ -3351,7 +3372,12 @@ func (a *ServerWithRoles) UpsertSAMLConnector(ctx context.Context, connector typ
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindSAML, types.VerbCreate); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindSAML, types.VerbUpdate); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
 		return nil, trace.Wrap(err)
 	}
 
@@ -3369,6 +3395,10 @@ func (a *ServerWithRoles) CreateSAMLConnector(ctx context.Context, connector typ
 		return nil, trace.Wrap(err)
 	}
 
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
 	created, err := a.authServer.CreateSAMLConnector(ctx, connector)
 	return created, trace.Wrap(err)
 }
@@ -3383,6 +3413,10 @@ func (a *ServerWithRoles) UpdateSAMLConnector(ctx context.Context, connector typ
 		return nil, trace.Wrap(err)
 	}
 
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
 	updated, err := a.authServer.UpdateSAMLConnector(ctx, connector)
 	return updated, trace.Wrap(err)
 }
@@ -3391,11 +3425,13 @@ func (a *ServerWithRoles) GetSAMLConnector(ctx context.Context, id string, withS
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindSAML, types.VerbReadNoSecrets); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
 	if withSecrets {
 		if err := a.authConnectorAction(apidefaults.Namespace, types.KindSAML, types.VerbRead); err != nil {
 			return nil, trace.Wrap(err)
 		}
 	}
+
 	return a.authServer.GetSAMLConnector(ctx, id, withSecrets)
 }
 
@@ -3416,6 +3452,10 @@ func (a *ServerWithRoles) GetSAMLConnectors(ctx context.Context, withSecrets boo
 
 func (a *ServerWithRoles) CreateSAMLAuthRequest(ctx context.Context, req types.SAMLAuthRequest) (*types.SAMLAuthRequest, error) {
 	if err := a.action(apidefaults.Namespace, types.KindSAMLRequest, types.VerbCreate); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
 		return nil, trace.Wrap(err)
 	}
 
@@ -3497,6 +3537,11 @@ func (a *ServerWithRoles) DeleteSAMLConnector(ctx context.Context, connectorID s
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindSAML, types.VerbDelete); err != nil {
 		return trace.Wrap(err)
 	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return trace.Wrap(err)
+	}
+
 	return a.authServer.DeleteSAMLConnector(ctx, connectorID)
 }
 
@@ -3524,10 +3569,16 @@ func (a *ServerWithRoles) UpsertGithubConnector(ctx context.Context, connector t
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindGithub, types.VerbCreate); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindGithub, types.VerbUpdate); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
 	if err := a.checkGithubConnector(connector); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
 		return nil, trace.Wrap(err)
 	}
 
@@ -3540,9 +3591,15 @@ func (a *ServerWithRoles) CreateGithubConnector(ctx context.Context, connector t
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindGithub, types.VerbCreate); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
 	if err := a.checkGithubConnector(connector); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
 	created, err := a.authServer.createGithubConnector(ctx, connector)
 	return created, trace.Wrap(err)
 }
@@ -3552,9 +3609,15 @@ func (a *ServerWithRoles) UpdateGithubConnector(ctx context.Context, connector t
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindGithub, types.VerbUpdate); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
 	if err := a.checkGithubConnector(connector); err != nil {
 		return nil, trace.Wrap(err)
 	}
+
 	updated, err := a.authServer.updateGithubConnector(ctx, connector)
 	return updated, trace.Wrap(err)
 }
@@ -3591,11 +3654,20 @@ func (a *ServerWithRoles) DeleteGithubConnector(ctx context.Context, connectorID
 	if err := a.authConnectorAction(apidefaults.Namespace, types.KindGithub, types.VerbDelete); err != nil {
 		return trace.Wrap(err)
 	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
+		return trace.Wrap(err)
+	}
+
 	return a.authServer.deleteGithubConnector(ctx, connectorID)
 }
 
 func (a *ServerWithRoles) CreateGithubAuthRequest(ctx context.Context, req types.GithubAuthRequest) (*types.GithubAuthRequest, error) {
 	if err := a.action(apidefaults.Namespace, types.KindGithubRequest, types.VerbCreate); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := authz.AuthorizeAdminAction(ctx, &a.context); err != nil {
 		return nil, trace.Wrap(err)
 	}
 
