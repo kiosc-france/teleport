@@ -19,14 +19,14 @@ KUBECONFIG ?=
 TEST_KUBE ?=
 
 OS ?= linux
-ARCH ?= amd64
+ARCH ?= $(shell go env GOARCH)
 
 UID := $$(id -u)
 GID := $$(id -g)
 
 HOST_ARCH := $(shell uname -m)
 RUNTIME_ARCH_x86_64 := amd64
-# uname returns different value on Linux (aarch64) and MacOS (arm64).
+# uname returns different value on Linux (aarch64) and macOS (arm64).
 RUNTIME_ARCH_arm64 := arm64
 RUNTIME_ARCH_aarch64 := arm64
 RUNTIME_ARCH := $(RUNTIME_ARCH_$(HOST_ARCH))
@@ -125,7 +125,7 @@ build-binaries-fips: buildbox-centos7-fips webassets
 .PHONY:buildbox
 buildbox:
 	$(call PULL_ON_CI,$(BUILDBOX))
-	DOCKER_BUILDKIT=1 docker build --platform=linux/$(RUNTIME_ARCH) \
+	docker buildx build \
 		--build-arg UID=$(UID) \
 		--build-arg GID=$(GID) \
 		--build-arg BUILDARCH=$(RUNTIME_ARCH) \
@@ -140,6 +140,7 @@ buildbox:
 		--build-arg NODE_PROTOC_TS_VERSION=$(NODE_PROTOC_TS_VERSION) \
 		--build-arg PROTOC_VERSION=$(PROTOC_VERSION) \
 		--cache-from $(BUILDBOX) \
+		$(if $(PUSH),--push) \
 		--tag $(BUILDBOX) .
 
 # Builds a Docker buildbox for FIPS
@@ -156,9 +157,10 @@ buildbox-fips: buildbox-centos7-fips
 buildbox-centos7:
 	$(REQUIRE_HOST_ARCH)
 	$(call PULL_ON_CI,$(BUILDBOX_CENTOS7))
-	DOCKER_BUILDKIT=1 docker build \
+	docker buildx build \
 		--build-arg UID=$(UID) \
 		--build-arg GID=$(GID) \
+		--build-arg BUILDBOX_CENTOS7_ASSETS=$(BUILDBOX_CENTOS7_ASSETS) \
 		--build-arg BUILDARCH=$(RUNTIME_ARCH) \
 		--build-arg TARGETARCH=$(HOST_ARCH) \
 		--build-arg GOLANG_VERSION=$(GOLANG_VERSION) \
@@ -168,25 +170,20 @@ buildbox-centos7:
 		--build-arg LIBBPF_VERSION=$(LIBBPF_VERSION) \
 		--build-arg LIBPCSCLITE_VERSION=$(LIBPCSCLITE_VERSION) \
 		--cache-from $(BUILDBOX_CENTOS7) \
+		$(if $(PUSH),--push) \
 		--tag $(BUILDBOX_CENTOS7) -f Dockerfile-centos7 .
 
 #
 # Builds a Docker buildbox for CentOS 7 FIPS builds
+# Uses regular CentOS 7 buildbox as base, so limited arguments are needed.
 #
 .PHONY:buildbox-centos7-fips
 buildbox-centos7-fips:
 	$(call PULL_ON_CI,$(BUILDBOX_CENTOS7_FIPS))
-	docker build \
-		--build-arg UID=$(UID) \
-		--build-arg GID=$(GID) \
-		--build-arg BUILDARCH=$(RUNTIME_ARCH) \
-		--build-arg TARGETARCH=$(HOST_ARCH) \
-		--build-arg GOLANG_VERSION=$(GOLANG_VERSION) \
-		--build-arg RUST_VERSION=$(RUST_VERSION) \
-		--build-arg WASM_PACK_VERSION=$(WASM_PACK_VERSION) \
-		--build-arg DEVTOOLSET=$(DEVTOOLSET) \
-		--build-arg LIBBPF_VERSION=$(LIBBPF_VERSION) \
+	docker buildx build \
+		--build-arg BUILDBOX_CENTOS7=$(BUILDBOX_CENTOS7) \
 		--cache-from $(BUILDBOX_CENTOS7_FIPS) \
+		$(if $(PUSH),--push) \
 		--tag $(BUILDBOX_CENTOS7_FIPS) -f Dockerfile-centos7-fips .
 
 #
@@ -197,7 +194,7 @@ buildbox-centos7-fips:
 .PHONY:buildbox-arm
 buildbox-arm:
 	$(call PULL_ON_CI,$(BUILDBOX_ARM))
-	docker build \
+	docker buildx build \
 		--build-arg BUILDBOX_VERSION=$(BUILDBOX_VERSION) \
 		--cache-from $(BUILDBOX) \
 		--cache-from $(BUILDBOX_ARM) \
@@ -206,6 +203,7 @@ buildbox-arm:
 		--build-arg BUILDARCH=$(RUNTIME_ARCH) \
 		--build-arg GOLANG_VERSION=$(GOLANG_VERSION) \
 		--build-arg NODE_VERSION=$(NODE_VERSION) \
+		$(if $(PUSH),--push) \
 		--tag $(BUILDBOX_ARM) -f Dockerfile-arm .
 
 CONNECT_VERSION ?= $(VERSION)
@@ -219,9 +217,10 @@ endif
 .PHONY:buildbox-connect
 buildbox-connect:
 	if [[ $${DRONE} == "true" ]] && ! docker inspect --type=image $(BUILDBOX_CONNECT) 2>&1 >/dev/null; then docker pull $(BUILDBOX_CONNECT) || true; fi; \
-	DOCKER_BUILDKIT=1 docker build \
+	docker buildx build \
 		--build-arg NODE_VERSION=$(NODE_VERSION) \
 		--cache-from $(BUILDBOX_CONNECT) \
+		$(if $(PUSH),--push) \
 		--tag $(BUILDBOX_CONNECT) -f Dockerfile-connect .
 
 #
@@ -379,6 +378,22 @@ enter-root/centos7: buildbox-centos7
 		-e HOME=$(SRCDIR)/build.assets -w $(SRCDIR) $(BUILDBOX_CENTOS7) /bin/bash
 
 #
+# Starts shell inside the centos7-fips container
+#
+.PHONY:enter/centos7-fips
+enter/centos7-fips: buildbox-centos7-fips
+	docker run $(DOCKERFLAGS) -ti $(NOROOT) \
+		-e HOME=$(SRCDIR)/build.assets -w $(SRCDIR) $(BUILDBOX_CENTOS7_FIPS) /bin/bash
+
+#
+# Starts a root shell inside the centos7-fips container
+#
+.PHONY:enter-root/centos7-fips
+enter-root/centos7-fips: buildbox-centos7-fips
+	docker run $(DOCKERFLAGS) -ti \
+		-e HOME=$(SRCDIR)/build.assets -w $(SRCDIR) $(BUILDBOX_CENTOS7_FIPS) /bin/bash
+
+#
 # Starts a shell inside the grpcbox.
 #
 .PHONY: enter/grpcbox
@@ -506,7 +521,7 @@ docsbox:
 
 .PHONY:test-docs
 test-docs: docsbox
-	docker run --platform=linux/amd64 -i $(NOROOT) -v $$(pwd)/..:/src/content $(DOCSBOX) \
+	docker run -i $(NOROOT) -v $$(pwd)/..:/src/content $(DOCSBOX) \
 		/bin/sh -c "yarn markdown-lint-external-links"
 
 #
@@ -549,10 +564,10 @@ print-buildbox-version:
 #
 .PHONY:build-centos7-assets
 build-centos7-assets:
-	docker build \
+	docker buildx build \
 		--build-arg DEVTOOLSET=$(DEVTOOLSET) \
 		--build-arg TARGETARCH=$(HOST_ARCH) \
-		--tag $(BUILDBOX_CENTOS7_ASSETS)-$(RUNTIME_ARCH) \
+		--tag $(BUILDBOX_CENTOS7_ASSETS) \
 		-f Dockerfile-centos7-assets .
 
 #

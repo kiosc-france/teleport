@@ -46,8 +46,5 @@ jobs:
           fi
 
       # We need to keep env vars in sync, so, we can't use standard build actions
-      - name: Build buildbox assets image
-        run: cd build.assets && make build-centos7-assets
-
-      - name: Docker push the latest built image
-        run: docker push $(docker images -a --format '{{.Repository}}:{{.Tag}}'| head -1)
+      - name: Build and push buildbox assets image
+        run: cd build.assets && make build-centos7-assets PUSH=1

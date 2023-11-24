@@ -1,17 +1,17 @@
 # syntax=docker/dockerfile:1
 
-FROM centos:7 AS centos-devtoolset
+FROM --platform=$BUILDPLATFORM centos:7 AS centos-devtoolset
 
+ARG BUILDARCH
 ARG DEVTOOLSET
-ARG TARGETARCH
 
 # devtoolset-12 is only in CentOS buildlogs. The rpms are unsigned since they never were
 # published to the official CentOS SCL repos.
-RUN if [ "${TARGETARCH}" = "arm64" ]; then export TARGETARCH="aarch64"; fi && \
+RUN if [ "${BUILDARCH}" = "arm64" ]; then export BUILDARCH="aarch64"; fi && \
     cat <<EOF > /etc/yum.repos.d/${DEVTOOLSET}-build.repo
 [${DEVTOOLSET}-build]
 name=${DEVTOOLSET} - Build
-baseurl=https://buildlogs.centos.org/c7-${DEVTOOLSET}.${TARGETARCH}/
+baseurl=https://buildlogs.centos.org/c7-${DEVTOOLSET}.${BUILDARCH}/
 gpgcheck=0
 enabled=1
 EOF
@@ -47,7 +47,7 @@ RUN yum install --nogpgcheck -y \
     yum clean all
 
 # Use just created devtool image with newer GCC and Cmake
-FROM centos-devtoolset as clang12
+FROM --platform=$BUILDPLATFORM centos-devtoolset as clang12
 
 ARG DEVTOOLSET
 
