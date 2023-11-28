@@ -54,3 +54,71 @@ func TestDeduplicateAny(t *testing.T) {
 		})
 	}
 }
+
+func TestAny(t *testing.T) {
+	tests := []struct {
+		name       string
+		inputSlice []int
+		predicate  func(e int) bool
+		expected   bool
+	}{
+		{
+			name:       "empty slice",
+			inputSlice: []int{},
+			predicate:  func(e int) bool { return e > 0 },
+			expected:   true,
+		},
+		{
+			name:       "non-empty slice with matching element",
+			inputSlice: []int{1, 2, 3},
+			predicate:  func(e int) bool { return e > 0 },
+			expected:   true,
+		},
+		{
+			name:       "non-empty slice with no matching element",
+			inputSlice: []int{-1, -2, -3},
+			predicate:  func(e int) bool { return e > 0 },
+			expected:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, Any(tt.inputSlice, tt.predicate))
+		})
+	}
+}
+
+func TestAll(t *testing.T) {
+	tests := []struct {
+		name       string
+		inputSlice []int
+		predicate  func(e int) bool
+		expected   bool
+	}{
+		{
+			name:       "empty slice",
+			inputSlice: []int{},
+			predicate:  func(e int) bool { return e > 0 },
+			expected:   false,
+		},
+		{
+			name:       "non-empty slice with all matching elements",
+			inputSlice: []int{1, 2, 3},
+			predicate:  func(e int) bool { return e > 0 },
+			expected:   true,
+		},
+		{
+			name:       "non-empty slice with at least one non-matching element",
+			inputSlice: []int{1, 2, -3},
+			predicate:  func(e int) bool { return e > 0 },
+			expected:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, All(tt.inputSlice, tt.predicate))
+		})
+	}
+}

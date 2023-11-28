@@ -28,6 +28,8 @@ import (
 
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/srv/db/common"
+	"github.com/gravitational/teleport/lib/srv/db/common/permissions"
+	"github.com/gravitational/teleport/lib/srv/db/postgres/provider"
 )
 
 func (e *Engine) connectAsAdmin(ctx context.Context, sessionCtx *common.Session) (*pgx.Conn, error) {
@@ -73,8 +75,105 @@ func (e *Engine) ActivateUser(ctx context.Context, sessionCtx *common.Session) e
 		e.Log.Debugf("Call teleport_activate_user failed: %v", err)
 		return trace.Wrap(convertActivateError(sessionCtx, err))
 	}
-	return nil
 
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			return trace.AlreadyExists("user %q already exists in this PostgreSQL database and is not managed by Teleport", sessionCtx.DatabaseUser)
+		}
+		return trace.Wrap(err)
+	}
+
+	err = e.applyPermissions(ctx, sessionCtx, conn)
+	if err != nil {
+		e.Log.WithError(err).Warn("Failed to apply permissions.")
+		return trace.Wrap(err)
+	}
+	return nil
+}
+
+type TablePermission struct {
+	Privilege string `json:"privilege"`
+	Schema    string `json:"schema"`
+	Table     string `json:"table"`
+}
+
+type Permissions struct {
+	Tables []TablePermission `json:"tables"`
+}
+
+var pgPerms = map[string]struct{}{
+	"SELECT":     {},
+	"INSERT":     {},
+	"UPDATE":     {},
+	"DELETE":     {},
+	"TRUNCATE":   {},
+	"REFERENCES": {},
+	"TRIGGER":    {},
+}
+
+func checkPgPermission(perm string) error {
+	normalized := strings.ToUpper(strings.TrimSpace(perm))
+	_, found := pgPerms[normalized]
+	if !found {
+		return trace.BadParameter("unrecognized Postgres table permission: %q", perm)
+	}
+	return nil
+}
+
+// convertPermissions converts the permissions into a stable format expected by the stored procedure. It also filters out any unsupported objects.
+func convertPermissions(perms permissions.PermissionSet) (*Permissions, error) {
+	var out Permissions
+	var errors []error
+	for permission, objects := range perms {
+		if err := checkPgPermission(permission); err != nil {
+			errors = append(errors, err)
+			continue
+		}
+
+		for _, obj := range objects {
+			if obj.GetSpec().ObjectKind == provider.ObjectKindTable {
+				out.Tables = append(out.Tables, TablePermission{
+					Privilege: permission,
+					Schema:    obj.GetSpec().Schema,
+					Table:     obj.GetSpec().Name,
+				})
+			}
+		}
+	}
+	if len(errors) > 0 {
+		return nil, trace.NewAggregate(errors...)
+	}
+	return &out, nil
+}
+
+func (e *Engine) applyPermissions(ctx context.Context, sessionCtx *common.Session, conn *pgx.Conn) error {
+	rules, err := e.AuthClient.GetDatabaseObjectsImportRules(ctx)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	objsFetched, err := provider.FetchDatabaseObjects(ctx, sessionCtx, conn)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	objsTagged := permissions.ApplyDatabaseObjectImportRules(rules, sessionCtx.Database, objsFetched)
+
+	perms, err := permissions.CalculatePermissions(sessionCtx.Checker, objsTagged)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	stPerms, err := convertPermissions(perms)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	_, err = conn.Exec(ctx, updatePrivilegesQuery, sessionCtx.DatabaseUser, stPerms)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	return nil
 }
 
 // DeactivateUser disables the database user.
@@ -245,10 +344,15 @@ const (
 	// deactivateProcName is the name of the stored procedure Teleport will use
 	// to automatically deactivate database users after session ends.
 	deactivateProcName = "teleport_deactivate_user"
+	// updatePermissionsProcName is the name of the stored procedure Teleport will use
+	// to automatically update database permissions.
+	updatePermissionsProcName = "teleport_update_permissions"
+	// removePermissionsProcName is the name of the stored procedure Teleport will use
+	// to automatically remove all database permissions.
+	removePermissionsProcName = "teleport_remove_permissions"
 	// deleteProcName is the name of the stored procedure Teleport will use to
 	// automatically delete database users after session ends.
 	deleteProcName = "teleport_delete_user"
-
 	// teleportAutoUserRole is the name of a PostgreSQL role that all Teleport
 	// managed users will be a part of.
 	teleportAutoUserRole = "teleport-auto-user"
@@ -259,6 +363,14 @@ var (
 	activateProc string
 	// activateQuery is the query for calling user activation procedure.
 	activateQuery = fmt.Sprintf(`call %v($1, $2)`, activateProcName)
+
+	//go:embed sql/update-permissions.sql
+	updatePrivilegesProc string
+	// updatePrivilegesQuery is the query for calling update permissions procedure.
+	updatePrivilegesQuery = fmt.Sprintf(`call %v($1, $2::jsonb)`, updatePermissionsProcName)
+
+	//go:embed sql/remove-permissions.sql
+	removePrivilegesProc string
 
 	//go:embed sql/deactivate-user.sql
 	deactivateProc string
@@ -278,10 +390,13 @@ var (
 	redshiftDeleteProc string
 
 	procs = map[string]string{
-		activateProcName:   activateProc,
-		deactivateProcName: deactivateProc,
-		deleteProcName:     deleteProc,
+		activateProcName:          activateProc,
+		deactivateProcName:        deactivateProc,
+		updatePermissionsProcName: updatePrivilegesProc,
+		removePermissionsProcName: removePrivilegesProc,
+		deleteProcName:            deleteProc,
 	}
+
 	redshiftProcs = map[string]string{
 		activateProcName:   redshiftActivateProc,
 		deactivateProcName: redshiftDeactivateProc,

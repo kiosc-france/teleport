@@ -82,3 +82,47 @@ func Test_prepareRoles(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckPgPermission(t *testing.T) {
+	tests := []struct {
+		name     string
+		perm     string
+		checkErr require.ErrorAssertionFunc
+	}{
+		{
+			name:     "valid permission",
+			perm:     "SELECT",
+			checkErr: require.NoError,
+		},
+		{
+			name:     "whitespace trimmed",
+			perm:     "  SELECT   ",
+			checkErr: require.NoError,
+		},
+		{
+			name:     "case-insensitive",
+			perm:     "seLEct",
+			checkErr: require.NoError,
+		},
+		{
+			name: "invalid permission",
+			perm: "INVALID",
+			checkErr: func(t require.TestingT, err error, i ...interface{}) {
+				require.ErrorContains(t, err, "unrecognized Postgres table permission: \"INVALID\"")
+			},
+		},
+		{
+			name: "multiple permissions not allowed",
+			perm: "SELECT, UPDATE",
+			checkErr: func(t require.TestingT, err error, i ...interface{}) {
+				require.ErrorContains(t, err, "unrecognized Postgres table permission: \"SELECT, UPDATE\"")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.checkErr(t, checkPgPermission(tt.perm))
+		})
+	}
+}

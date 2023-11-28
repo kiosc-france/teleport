@@ -3099,6 +3099,43 @@ func (c *Client) DeleteAllDatabaseServices(ctx context.Context) error {
 	return trace.Wrap(err)
 }
 
+func (c *Client) GetDatabaseObjects(ctx context.Context) ([]types.DatabaseObject, error) {
+	return nil, trace.NotImplemented("yet")
+}
+
+func (c *Client) UpsertDatabaseObjects(context.Context, []types.DatabaseObject) error {
+	return trace.NotImplemented("yet")
+}
+
+func (c *Client) GetDatabaseObjectsImportRules(context.Context) ([]types.DatabaseObjectImportRule, error) {
+	return []types.DatabaseObjectImportRule{
+		&types.DatabaseObjectImportRuleV1{
+			Spec: types.DatabaseObjectImportRuleSpec{
+				Priority:       123,
+				DatabaseLabels: map[string]string{},
+				Mappings: []types.DatabaseObjectImportRuleMapping{
+					{
+						ObjectMatches: nil,
+						AddLabels: map[string]string{
+							"env": "prod",
+						},
+					},
+					{
+						ObjectMatches: []types.DatabaseObjectSpec{
+							{
+								Protocol: "postgres",
+							},
+						},
+						AddLabels: map[string]string{
+							"is_postgres": "true",
+						},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
 // GetWindowsDesktopServices returns all registered windows desktop services.
 func (c *Client) GetWindowsDesktopServices(ctx context.Context) ([]types.WindowsDesktopService, error) {
 	resp, err := c.grpc.GetWindowsDesktopServices(ctx, &emptypb.Empty{})

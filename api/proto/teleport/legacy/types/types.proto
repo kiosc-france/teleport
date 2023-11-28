@@ -2918,6 +2918,97 @@ message RoleConditions {
   // GroupLabelsExpression is a predicate expression used to allow/deny
   // access to user groups.
   string GroupLabelsExpression = 37 [(gogoproto.jsontag) = "group_labels_expression,omitempty"];
+  // DatabasePermission specifies a set of permissions that will be granted
+  // to the database user when using automatic database user provisioning.
+  repeated DatabasePermission DatabasePermissions = 38 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "db_permissions,omitempty"
+  ];
+}
+
+// DatabasePermission specifies the database object permission for the user.
+message DatabasePermission {
+  // ObjectKind is the database object kind: table, schema, etc.
+  string ObjectKind = 1 [(gogoproto.jsontag) = "object_kind"];
+  // Permission is the string representation of the permission to be given, e.g. SELECT, INSERT, UPDATE, ...
+  string Permission = 2 [(gogoproto.jsontag) = "permission"];
+  // Match is a list of labels (key, value) to match against database object properties.
+  map<string, string> Match = 3 [(gogoproto.jsontag) = "match,omitempty"];
+}
+
+// DatabaseObjectV1 is a resource representing a database object.
+message DatabaseObjectV1 {
+  option (gogoproto.goproto_stringer) = false;
+  option (gogoproto.stringer) = false;
+
+  ResourceHeader Header = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "",
+    (gogoproto.embed) = true
+  ];
+
+  DatabaseObjectSpec Spec = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "spec"
+  ];
+}
+
+// DatabaseObjectSpec is the spec for the database object.
+message DatabaseObjectSpec {
+  string Protocol = 1 [(gogoproto.jsontag) = "protocol,omitempty"];
+  string ServiceName = 2 [(gogoproto.jsontag) = "service_name,omitempty"];
+  string ObjectKind = 3 [(gogoproto.jsontag) = "object_kind"];
+  string Database = 4 [(gogoproto.jsontag) = "database,omitempty"];
+  string Schema = 5 [(gogoproto.jsontag) = "schema,omitempty"];
+  string Name = 6 [(gogoproto.jsontag) = "name,omitempty"];
+  // extra attributes for matching
+  map<string, string> Attributes = 7 [(gogoproto.jsontag) = "attributes,omitempty"];
+}
+
+// DatabaseObjectImportRuleV1 is the resource representing a global database object import rule.
+message DatabaseObjectImportRuleV1 {
+  option (gogoproto.goproto_stringer) = false;
+  option (gogoproto.stringer) = false;
+
+  ResourceHeader Header = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "",
+    (gogoproto.embed) = true
+  ];
+
+  DatabaseObjectImportRuleSpec Spec = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "spec"
+  ];
+}
+
+// DatabaseObjectImportRuleSpec is the spec for database object import rule.
+message DatabaseObjectImportRuleSpec {
+  // Priority represents the priority of the rule application. Lower numbered rules will be applied first.
+  int32 Priority = 1 [(gogoproto.jsontag) = "priority"];
+
+  // DatabaseLabels is a set of labels which must match the database for the rule to be applied.
+  map<string, string> DatabaseLabels = 2 [(gogoproto.jsontag) = "db_labels,omitempty"];
+
+  // Mappings is a list of matches that will map match conditions to labels.
+  repeated DatabaseObjectImportRuleMapping Mappings = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "mappings,omitempty"
+  ];
+}
+
+// DatabaseObjectImportRuleMapping is the mapping between object properties and labels that will be added to the object.
+message DatabaseObjectImportRuleMapping {
+  // ObjectMatches is a set of object matching rules for this mapping.
+  // For a given database object, each of the matches is attempted.
+  // If any of them succeed, the labels are applied.
+  repeated DatabaseObjectSpec ObjectMatches = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "object_match"
+  ];
+
+  // AddLabels specifies which labels to add if any of the previous matches match.
+  map<string, string> AddLabels = 3 [(gogoproto.jsontag) = "add_labels"];
 }
 
 // KubernetesResource is the Kubernetes resource identifier.

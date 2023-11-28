@@ -152,6 +152,11 @@ type Role interface {
 	// SetDatabaseRoles sets a list of database roles for auto-provisioned users.
 	SetDatabaseRoles(RoleConditionType, []string)
 
+	// GetDatabasePermissions gets database permissions for auto-provisioned users.
+	GetDatabasePermissions(rct RoleConditionType) DatabasePermissions
+	// SetDatabasePermissions sets database permissions for auto-provisioned users.
+	SetDatabasePermissions(RoleConditionType, DatabasePermissions)
+
 	// GetImpersonateConditions returns conditions this role is allowed or denied to impersonate.
 	GetImpersonateConditions(rct RoleConditionType) ImpersonateConditions
 	// SetImpersonateConditions sets conditions this role is allowed or denied to impersonate.
@@ -702,6 +707,23 @@ func (r *RoleV6) SetDatabaseRoles(rct RoleConditionType, values []string) {
 		r.Spec.Allow.DatabaseRoles = values
 	} else {
 		r.Spec.Deny.DatabaseRoles = values
+	}
+}
+
+// GetDatabasePermissions gets a list of database permissions for auto-provisioned users.
+func (r *RoleV6) GetDatabasePermissions(rct RoleConditionType) DatabasePermissions {
+	if rct == Allow {
+		return r.Spec.Allow.DatabasePermissions
+	}
+	return r.Spec.Deny.DatabasePermissions
+}
+
+// SetDatabasePermissions sets a list of database permissions for auto-provisioned users.
+func (r *RoleV6) SetDatabasePermissions(rct RoleConditionType, values DatabasePermissions) {
+	if rct == Allow {
+		r.Spec.Allow.DatabasePermissions = values
+	} else {
+		r.Spec.Deny.DatabasePermissions = values
 	}
 }
 

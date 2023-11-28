@@ -5093,6 +5093,18 @@ func (a *ServerWithRoles) DeleteDatabaseService(ctx context.Context, name string
 	return a.authServer.DeleteDatabaseService(ctx, name)
 }
 
+func (c *ServerWithRoles) GetDatabaseObjects(ctx context.Context) ([]types.DatabaseObject, error) {
+	return nil, trace.NotImplemented("yet")
+}
+
+func (c *ServerWithRoles) UpsertDatabaseObjects(context.Context, []types.DatabaseObject) error {
+	return trace.NotImplemented("yet")
+}
+
+func (c *ServerWithRoles) GetDatabaseObjectsImportRules(context.Context) ([]types.DatabaseObjectImportRule, error) {
+	return nil, trace.NotImplemented("yet")
+}
+
 // SignDatabaseCSR generates a client certificate used by proxy when talking
 // to a remote database service.
 func (a *ServerWithRoles) SignDatabaseCSR(ctx context.Context, req *proto.DatabaseCSRRequest) (*proto.DatabaseCSRResponse, error) {

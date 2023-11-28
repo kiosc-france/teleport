@@ -81,3 +81,29 @@ func DeduplicateAny[T any](in []T, compare func(T, T) bool) []T {
 	}
 	return out
 }
+
+// Any checks if any element of slice satisfy given predicate. If the slice is empty, it returns true.
+func Any[S ~[]E, E any](s S, predicate func(E) bool) bool {
+	if len(s) == 0 {
+		return true
+	}
+	for _, e := range s {
+		if predicate(e) {
+			return true
+		}
+	}
+	return false
+}
+
+// All checks if all elements of slice satisfy given predicate. If the slice is empty, it returns false.
+func All[S ~[]E, E any](s S, predicate func(E) bool) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, e := range s {
+		if !predicate(e) {
+			return false
+		}
+	}
+	return true
+}
