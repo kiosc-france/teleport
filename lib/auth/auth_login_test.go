@@ -29,6 +29,7 @@ import (
 	"github.com/gravitational/teleport/api/client/proto"
 	"github.com/gravitational/teleport/api/constants"
 	"github.com/gravitational/teleport/api/types"
+	webauthnpb "github.com/gravitational/teleport/api/types/webauthn"
 	"github.com/gravitational/teleport/lib/auth/mocku2f"
 	wantypes "github.com/gravitational/teleport/lib/auth/webauthntypes"
 	"github.com/gravitational/teleport/lib/defaults"
@@ -181,7 +182,9 @@ func TestCreateAuthenticateChallenge_WithAuth(t *testing.T) {
 	clt, err := srv.NewClient(TestUser(u.username))
 	require.NoError(t, err)
 
-	res, err := clt.CreateAuthenticateChallenge(ctx, &proto.CreateAuthenticateChallengeRequest{})
+	res, err := clt.CreateAuthenticateChallenge(ctx, &proto.CreateAuthenticateChallengeRequest{
+		Scope: webauthnpb.ChallengeScope_CHALLENGE_SCOPE_LOGIN,
+	})
 	require.NoError(t, err)
 
 	// MFA authentication works.
@@ -410,6 +413,7 @@ func TestCreateAuthenticateChallenge_mfaVerification(t *testing.T) {
 			Request: &proto.CreateAuthenticateChallengeRequest_ContextUser{
 				ContextUser: &proto.ContextUser{},
 			},
+			Scope: webauthnpb.ChallengeScope_CHALLENGE_SCOPE_SESSION,
 			MFARequiredCheck: &proto.IsMFARequiredRequest{
 				Target: &proto.IsMFARequiredRequest_Node{
 					Node: &proto.NodeLogin{
@@ -533,6 +537,7 @@ func TestCreateRegisterChallenge(t *testing.T) {
 			Request: &proto.CreateAuthenticateChallengeRequest_ContextUser{
 				ContextUser: &proto.ContextUser{},
 			},
+			Scope: webauthnpb.ChallengeScope_CHALLENGE_SCOPE_MANAGE_DEVICES,
 		})
 		require.NoError(t, err, "CreateAuthenticateChallenge")
 		authnSolved, err := u.webDev.SolveAuthn(authnChal)
@@ -772,6 +777,7 @@ func TestServer_Authenticate_passwordless(t *testing.T) {
 		Request: &proto.CreateAuthenticateChallengeRequest_ContextUser{
 			ContextUser: &proto.ContextUser{}, // already authenticated
 		},
+		Scope: webauthnpb.ChallengeScope_CHALLENGE_SCOPE_MANAGE_DEVICES,
 	})
 	require.NoError(t, err)
 	mfaResp, err := webDev.SolveAuthn(mfaChallenge)
@@ -971,6 +977,7 @@ func TestServer_Authenticate_nonPasswordlessRequiresUsername(t *testing.T) {
 				Request: &proto.CreateAuthenticateChallengeRequest_ContextUser{
 					ContextUser: &proto.ContextUser{},
 				},
+				Scope: webauthnpb.ChallengeScope_CHALLENGE_SCOPE_LOGIN,
 			})
 			require.NoError(t, err)
 

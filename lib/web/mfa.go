@@ -24,6 +24,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"github.com/gravitational/teleport/api/client/proto"
+	webauthnpb "github.com/gravitational/teleport/api/types/webauthn"
 	wantypes "github.com/gravitational/teleport/lib/auth/webauthntypes"
 	"github.com/gravitational/teleport/lib/client"
 	"github.com/gravitational/teleport/lib/httplib"
@@ -136,7 +137,10 @@ func (h *Handler) createAuthenticateChallengeHandle(w http.ResponseWriter, r *ht
 		return nil, trace.Wrap(err)
 	}
 
-	chal, err := clt.CreateAuthenticateChallenge(r.Context(), &proto.CreateAuthenticateChallengeRequest{})
+	chal, err := clt.CreateAuthenticateChallenge(r.Context(), &proto.CreateAuthenticateChallengeRequest{
+		// TODO: web client needs to provide scope
+		Scope: webauthnpb.ChallengeScope_CHALLENGE_SCOPE_UNSPECIFIED,
+	})
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -289,7 +293,8 @@ func (r *isMFARequiredRequest) checkAndGetProtoRequest() (*proto.IsMFARequiredRe
 					Protocol:    r.Database.Protocol,
 					Database:    r.Database.DatabaseName,
 					Username:    r.Database.Username,
-				}},
+				},
+			},
 		}
 	}
 
@@ -320,7 +325,8 @@ func (r *isMFARequiredRequest) checkAndGetProtoRequest() (*proto.IsMFARequiredRe
 				WindowsDesktop: &proto.RouteToWindowsDesktop{
 					WindowsDesktop: r.WindowsDesktop.DesktopName,
 					Login:          r.WindowsDesktop.Login,
-				}},
+				},
+			},
 		}
 	}
 
@@ -338,7 +344,8 @@ func (r *isMFARequiredRequest) checkAndGetProtoRequest() (*proto.IsMFARequiredRe
 				Node: &proto.NodeLogin{
 					Login: r.Node.Login,
 					Node:  r.Node.NodeName,
-				}},
+				},
+			},
 		}
 	}
 
