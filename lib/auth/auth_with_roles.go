@@ -7191,8 +7191,8 @@ func (a *ServerWithRoles) DeleteClusterMaintenanceConfig(ctx context.Context) er
 	return a.authServer.DeleteClusterMaintenanceConfig(ctx)
 }
 
-// ValidateMFAAuthResponse not implemented: can only be called locally.
-func (a *ServerWithRoles) ValidateMFAAuthResponse(ctx context.Context, resp *proto.MFAAuthenticateResponse, user string, passwordless bool) (*types.MFADevice, string, error) {
+// ValidateMFAAuthResponseWithScope not implemented: can only be called locally.
+func (a *ServerWithRoles) ValidateMFAAuthResponseWithScope(ctx context.Context, resp *proto.MFAAuthenticateResponse, user string, scope webauthnpb.ChallengeScope) (*types.MFADevice, string, error) {
 	return nil, "", trace.NotImplemented(notImplementedMessage)
 }
 
