@@ -68,6 +68,7 @@ import (
 	"github.com/gravitational/teleport/api/metadata"
 	"github.com/gravitational/teleport/api/types"
 	apievents "github.com/gravitational/teleport/api/types/events"
+	webauthnpb "github.com/gravitational/teleport/api/types/webauthn"
 	"github.com/gravitational/teleport/api/types/wrappers"
 	apiutils "github.com/gravitational/teleport/api/utils"
 	"github.com/gravitational/teleport/api/utils/keys"
@@ -2866,11 +2867,12 @@ func (a *Server) PreAuthenticatedSignIn(ctx context.Context, user string, identi
 // CreateAuthenticateChallenge implements AuthService.CreateAuthenticateChallenge.
 func (a *Server) CreateAuthenticateChallenge(ctx context.Context, req *proto.CreateAuthenticateChallengeRequest) (*proto.MFAAuthenticateChallenge, error) {
 	var username string
-	var passwordless bool
 
+	scope := req.GetScope()
 	switch req.GetRequest().(type) {
 	case *proto.CreateAuthenticateChallengeRequest_UserCredentials:
 		username = req.GetUserCredentials().GetUsername()
+		scope = webauthnpb.ChallengeScope_CHALLENGE_SCOPE_LOGIN
 
 		if err := a.WithUserLock(ctx, username, func() error {
 			return a.checkPasswordWOToken(username, req.GetUserCredentials().GetPassword())
@@ -2890,11 +2892,13 @@ func (a *Server) CreateAuthenticateChallenge(ctx context.Context, req *proto.Cre
 		}
 
 		username = token.GetUser()
+		scope = webauthnpb.ChallengeScope_CHALLENGE_SCOPE_RECOVERY
 
 	case *proto.CreateAuthenticateChallengeRequest_Passwordless:
-		passwordless = true // Allows empty username.
+		scope = webauthnpb.ChallengeScope_CHALLENGE_SCOPE_PASSWORDLESS_LOGIN
 
 	default: // unset or CreateAuthenticateChallengeRequest_ContextUser.
+		// TODO(Joerger): in v16.0.0, require scope to be specified in the request.
 		var err error
 		username, err = authz.GetClientUsername(ctx)
 		if err != nil {
@@ -2902,7 +2906,7 @@ func (a *Server) CreateAuthenticateChallenge(ctx context.Context, req *proto.Cre
 		}
 	}
 
-	challenges, err := a.mfaAuthChallenge(ctx, username, passwordless)
+	challenges, err := a.mfaAuthChallenge(ctx, username, scope)
 	if err != nil {
 		log.Error(trace.DebugReport(err))
 		return nil, trace.AccessDenied("unable to create MFA challenges")
@@ -5593,7 +5597,7 @@ func (a *Server) isMFARequired(ctx context.Context, checker services.AccessCheck
 
 // mfaAuthChallenge constructs an MFAAuthenticateChallenge for all MFA devices
 // registered by the user.
-func (a *Server) mfaAuthChallenge(ctx context.Context, user string, passwordless bool) (*proto.MFAAuthenticateChallenge, error) {
+func (a *Server) mfaAuthChallenge(ctx context.Context, user string, scope webauthnpb.ChallengeScope) (*proto.MFAAuthenticateChallenge, error) {
 	// Check what kind of MFA is enabled.
 	apref, err := a.GetAuthPreference(ctx)
 	if err != nil {
@@ -5622,7 +5626,7 @@ func (a *Server) mfaAuthChallenge(ctx context.Context, user string, passwordless
 	}
 
 	// Handle passwordless separately, it works differently from MFA.
-	if passwordless {
+	if scope == webauthnpb.ChallengeScope_CHALLENGE_SCOPE_PASSWORDLESS_LOGIN {
 		if !enableWebauthn {
 			return nil, trace.BadParameter("passwordless requires WebAuthn")
 		}
@@ -5663,7 +5667,7 @@ func (a *Server) mfaAuthChallenge(ctx context.Context, user string, passwordless
 			Webauthn: webConfig,
 			Identity: wanlib.WithDevices(a.Services, groupedDevs.Webauthn),
 		}
-		assertion, err := webLogin.Begin(ctx, user)
+		assertion, err := webLogin.Begin(ctx, user, scope)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -5750,9 +5754,25 @@ func (a *Server) validateMFAAuthResponseForRegister(
 // ValidateMFAAuthResponse validates an MFA or passwordless challenge.
 // Returns the device used to solve the challenge (if applicable) and the
 // username.
+//
+// TODO (Joerger): Delete once e is no longer dependendent on it.
 func (a *Server) ValidateMFAAuthResponse(ctx context.Context, resp *proto.MFAAuthenticateResponse, user string, passwordless bool) (*types.MFADevice, string, error) {
+	scope := webauthnpb.ChallengeScope_CHALLENGE_SCOPE_UNSPECIFIED
+	if passwordless {
+		scope = webauthnpb.ChallengeScope_CHALLENGE_SCOPE_PASSWORDLESS_LOGIN
+	}
+
+	return a.ValidateMFAAuthResponseWithScope(ctx, resp, user, scope)
+}
+
+// ValidateMFAAuthResponse validates an MFA or passwordless challenge.
+// Returns the device used to solve the challenge (if applicable) and the
+// username.
+func (a *Server) ValidateMFAAuthResponseWithScope(ctx context.Context, resp *proto.MFAAuthenticateResponse, user string, scope webauthnpb.ChallengeScope) (*types.MFADevice, string, error) {
+	isPasswordless := scope == webauthnpb.ChallengeScope_CHALLENGE_SCOPE_PASSWORDLESS_LOGIN
+
 	// Sanity check user/passwordless.
-	if user == "" && !passwordless {
+	if user == "" && !isPasswordless {
 		return nil, "", trace.BadParameter("user required")
 	}
 
@@ -5777,7 +5797,7 @@ func (a *Server) ValidateMFAAuthResponse(ctx context.Context, resp *proto.MFAAut
 
 		assertionResp := wantypes.CredentialAssertionResponseFromProto(res.Webauthn)
 		var dev *types.MFADevice
-		if passwordless {
+		if isPasswordless {
 			webLogin := &wanlib.PasswordlessFlow{
 				Webauthn: webConfig,
 				Identity: a.Services,
@@ -5789,7 +5809,7 @@ func (a *Server) ValidateMFAAuthResponse(ctx context.Context, resp *proto.MFAAut
 				Webauthn: webConfig,
 				Identity: a.Services,
 			}
-			dev, err = webLogin.Finish(ctx, user, wantypes.CredentialAssertionResponseFromProto(res.Webauthn))
+			dev, err = webLogin.Finish(ctx, user, wantypes.CredentialAssertionResponseFromProto(res.Webauthn), scope)
 		}
 		if err != nil {
 			return nil, "", trace.AccessDenied("MFA response validation failed: %v", err)
