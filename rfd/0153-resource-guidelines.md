@@ -100,15 +100,29 @@ message Foo {
   string version = 3;
   // Common metadata that all resources share.
   teleport.header.v1.Metadata metadata = 4;
-  // The specific properties of a Foo.
+  // The specific properties of a Foo. These should only be modified by
+  // the creator/owner of the resource and not dynamically altered or updated.
   FooSpec spec = 5;
+  // Any dynamic state of Foo that is modified during runtime of the
+  // Teleport process.
+  FooStatus status = 6;
 }
 
-// FooSpec contains specific properties of a Foo.
+// FooSpec contains specific properties of a Foo that MUST only
+// be modifed by the owner of the resource. These properties should
+// not be auotmatically adjusted by Teleport during runtime.
 message FooSpec {
   string bar = 1;
   int32 baz = 2;
   bool qux = 3;
+}
+
+// FooStatus contains dynamic properties of a Foo. These properties are
+// modified during runtime of a Teleport process. They should not be exposed
+// to end users and ignored by external IaC tools.
+message FooSpec {
+  google.protobuf.Timestamp next_audit = 1;
+  string teleport_host = 2;
 }
 ```
 
@@ -135,6 +149,15 @@ is
 [Bool vs. Enum vs. String](https://cloud.google.com/apis/design/design_patterns#bool_vs_enum_vs_string). There have been several occasions in the past where a particular field
 was not flexible enough which prevented behavior from being easily extended to
 support a new feature.
+
+All properties defined in the `spec` of a resource MUST only be modifed by the
+owner/creator of the resource. For example, if a resource is created via
+`tctl create`, then any fields within the `spec` MUST not be altered dynamically
+by the Teleport process. When Teleport automatically modifies the `spec` during
+runtime it causes drift between external IaC. If a resource has properties that
+are required to be modified dynamically by Teleport, a separate `status` field
+should be added to the resource to contain them. These fields will be ignored
+by IaC tools during their reconcilliation.
 
 ### API
 
