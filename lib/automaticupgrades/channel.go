@@ -24,17 +24,52 @@ import (
 
 	"github.com/gravitational/trace"
 
+	"github.com/gravitational/teleport/api/client/proto"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/maintenance"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/version"
+)
+
+const (
+	defaultChannelName        = "default"
+	defaultCloudChannelName   = "stable/cloud"
+	stableCloudVersionBaseURL = "https://updates.releases.teleport.dev/v1/stable/cloud"
 )
 
 // Channels is a map of Channel objects.
 type Channels map[string]*Channel
 
 // CheckAndSetDefaults checks that every Channel is valid and initializes them.
-func (c Channels) CheckAndSetDefaults() error {
+// It also creates default channels if they are not already present.
+// Cloud must have the `default` and `stable/cloud` channels.
+// Self-hosted with automatic upgrades must have the `default` channel.
+func (c Channels) CheckAndSetDefaults(features proto.Features) error {
+	defaultChannel, err := NewDefaultChannel()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	// If we're on cloud, we need at least "cloud/stable" and "default"
+	if features.GetCloud() {
+		if _, ok := c[defaultCloudChannelName]; !ok {
+			c[defaultCloudChannelName] = defaultChannel
+		}
+		if _, ok := c[defaultChannelName]; !ok {
+			c[defaultChannelName] = c[defaultCloudChannelName]
+		}
+	}
+
+	// If we're on self-hosted with automatic upgrades, we need a "default" channel
+	// We don't want to break existing setups so we'll automatically point to the
+	// `cloud/stable` channel.
+	// TODO: in v15 make this a hard requirement and error if `default` is not set
+	// and automatic upgrades are enabled
+	if features.GetAutomaticUpgrades() {
+		if _, ok := c[defaultChannelName]; !ok {
+			c[defaultChannelName] = defaultChannel
+		}
+	}
+
 	var errs []error
-	var err error
 	for name, channel := range c {
 		// Wrapping is not mandatory here, but it adds the channel name in the
 		// error, which makes troubleshooting easier.
@@ -44,6 +79,16 @@ func (c Channels) CheckAndSetDefaults() error {
 		}
 	}
 	return trace.NewAggregate(errs...)
+}
+
+// DefaultVersion returns the version served by the default upgrade channel.
+func (c Channels) DefaultVersion(ctx context.Context) (string, error) {
+	channel, ok := c[defaultChannelName]
+	if !ok {
+		return "", trace.NotFound("default version channel not found")
+	}
+	targetVersion, err := channel.GetVersion(ctx)
+	return targetVersion, trace.Wrap(err)
 }
 
 // Channel describes an automatic update channel configuration.
@@ -96,4 +141,23 @@ func (c *Channel) GetVersion(ctx context.Context) (string, error) {
 // this function implements cache and is safe to call frequently.
 func (c *Channel) GetCritical(ctx context.Context) (bool, error) {
 	return c.criticalTrigger.CanStart(ctx, nil)
+}
+
+// NewDefaultChannel creates a default automatic upgrade channel
+// It looks up the environment variable, and if not found uses the default
+// base URL. This default channel can be used in the proxy (to back its own version server)
+// or in other Teleport process such as integration services deploying and
+// updating teleport agents.
+func NewDefaultChannel() (*Channel, error) {
+	forwardURL := GetChannel()
+	if forwardURL == "" {
+		forwardURL = stableCloudVersionBaseURL
+	}
+	defaultChannel := &Channel{
+		ForwardURL: forwardURL,
+	}
+	if err := defaultChannel.CheckAndSetDefaults(); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return defaultChannel, nil
 }

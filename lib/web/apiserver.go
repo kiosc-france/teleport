@@ -381,6 +381,17 @@ func NewHandler(cfg Config, opts ...HandlerOption) (*APIHandler, error) {
 		h.assistantLimiter = rate.NewLimiter(rate.Inf, 0)
 	}
 
+	if automaticUpgrades(cfg.ClusterFeatures) && cfg.AutomaticUpgradesChannels == nil {
+		cfg.AutomaticUpgradesChannels = automaticupgrades.Channels{}
+	}
+
+	if cfg.AutomaticUpgradesChannels != nil {
+		err := cfg.AutomaticUpgradesChannels.CheckAndSetDefaults(cfg.ClusterFeatures)
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+	}
+
 	// for properly handling url-encoded parameter values.
 	h.UseRawPath = true
 
@@ -1574,7 +1585,7 @@ func (h *Handler) getWebConfig(w http.ResponseWriter, r *http.Request, p httprou
 	automaticUpgradesEnabled := clusterFeatures.GetAutomaticUpgrades()
 	var automaticUpgradesTargetVersion string
 	if automaticUpgradesEnabled {
-		automaticUpgradesTargetVersion, err = automaticupgrades.Version(r.Context(), h.cfg.AutomaticUpgradesVersionURL)
+		automaticUpgradesTargetVersion, err = h.cfg.AutomaticUpgradesChannels.DefaultVersion(r.Context())
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
