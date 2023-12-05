@@ -120,7 +120,7 @@ message FooSpec {
 // FooStatus contains dynamic properties of a Foo. These properties are
 // modified during runtime of a Teleport process. They should not be exposed
 // to end users and ignored by external IaC tools.
-message FooSpec {
+message FooStatus {
   google.protobuf.Timestamp next_audit = 1;
   string teleport_host = 2;
 }
@@ -173,17 +173,10 @@ The request MUST fail and return a `trace.AlreadyExists` error if a matching res
 
 ```protobuf
 // Creates a new Foo resource in the backend.
-    rpc CreateFoo(CreateFooRequest) returns (CreateFooResponse);
+    rpc CreateFoo(CreateFooRequest) returns (Foo);
 
 message CreateFooRequest {
   // The desired Foo to be created.
-  Foo foo = 1;
-}
-
-message CreateFooResponse {
-  // The created Foo as it exists in the backend. The only differences between the returned
-  // resource and the requested resource are due to properties that are updated by the server.
-  // In most cases this will be limited to the Revision field of the Metadata in the ResourceHeader.
   Foo foo = 1;
 }
 ```
@@ -199,20 +192,13 @@ The request MUST fail and return a `trace.NotFound` error if there is no matchin
 
 ```protobuf
 // Updates an existing Foo in the backend.
-    rpc UpdateFoo(UpdateFooRequest) returns (UpdateFooResponse);
+    rpc UpdateFoo(UpdateFooRequest) returns (Foo);
 
 message UpdateFooRequest {
   // The full Foo resource to update in the backend.
   Foo foo = 1;
   // A partial update for an existing Foo resource.
   FieldMask update_mask = 2;
-}
-
-message UpdateFooResponse {
-  // The updated Foo as it exists in the backend. The only differences between the returned
-  // resource and the requested resource are due to properties that are updated by the server.
-  // In most cases this will be limited to the Revision field of the Metadata in the ResourceHeader.
-  Foo foo = 1;
 }
 ```
 
@@ -228,17 +214,10 @@ without requiring a call to `Get`. If `Upsert` is not consumed it may be omitted
 
 ```protobuf
 // Creates a new Foo or replaces an existing Foo in the backend.
-    rpc UpsertFoo(UpsertFooRequest) returns (UpsertFooResponse);
+    rpc UpsertFoo(UpsertFooRequest) returns (Foo);
 
 message UpsertFooRequest {
   // The full Foo resource to persist in the backend.
-  Foo foo = 1;
-}
-
-message UpsertFooResponse {
-  // The upserted Foo as it exists in the backend. The only differences between the returned
-  // resource and the requested resource are due to properties that are updated by the server.
-  // In most cases this will be limited to the Revision field of the Metadata in the ResourceHeader.
   Foo foo = 1;
 }
 ```
@@ -629,15 +608,29 @@ message Foo {
   string version = 3;
   // Common metadata that all resources shared.
   teleport.header.v1.Metadata metadata = 4;
-  // The resource specific specification.
+  // The specific properties of a Foo. These should only be modified by
+  // the creator/owner of the resource and not dynamically altered or updated.
   FooSpec spec = 5;
+  // Any dynamic state of Foo that is modified during runtime of the
+  // Teleport process.
+  FooStatus status = 6;
 }
 
-// FooSpec contains resource specific properties.
+// FooSpec contains specific properties of a Foo that MUST only
+// be modifed by the owner of the resource. These properties should
+// not be auotmatically adjusted by Teleport during runtime.
 message FooSpec {
   string bar = 1;
   int32 baz = 2;
   bool qux = 3;
+}
+
+// FooStatus contains dynamic properties of a Foo. These properties are
+// modified during runtime of a Teleport process. They should not be exposed
+// to end users and ignored by external IaC tools.
+message FooStatus {
+  google.protobuf.Timestamp next_audit = 1;
+  string teleport_host = 2;
 }
 ```
 
@@ -663,13 +656,13 @@ service FooService {
   rpc ListFoos(ListFoosRequest) returns (ListFoosResponse);
 
   // CreateFoo creates a new Foo resource.
-  rpc CreateFoo(CreateFooRequest) returns (CreateFooResponse);
+  rpc CreateFoo(CreateFooRequest) returns (Foo);
 
   // UpdateFoo updates an existing Foo resource.
-  rpc UpdateFoo(UpdateFooRequest) returns (UpdateFooResponse);
+  rpc UpdateFoo(UpdateFooRequest) returns (Foo);
 
   // UpsertFoo creates or replaces a Foo resource.
-  rpc UpsertFoo(UpsertFooRequest) returns (UpsertFooResponse);
+  rpc UpsertFoo(UpsertFooRequest) returns (Foo);
 
   // DeleteFoo hard deletes the specified Foo resource.
   rpc DeleteFoo(DeleteFooRequest) returns (google.protobuf.Empty);
@@ -716,12 +709,6 @@ message CreateFooRequest {
   Foo foo = 1;
 }
 
-// Response for CreateFoo.
-message CreateFooResponse {
-  // The created foo with any server side generated fields populated.
-  Foo foo = 1;
-}
-
 // Request for UpdateFoo.
 message UpdateFooRequest {
   // The foo resource to update.
@@ -732,22 +719,10 @@ message UpdateFooRequest {
   FieldMask update_mask = 2;
 }
 
-// Response for UpdateFoo.
-message UpdateFooResponse {
-  // The updated foo with any server side generated fields populated.
-  Foo foo = 1;
-}
-
 // Request for UpsertFoo.
 message UpsertFooRequest {
   // The foo resource to upsert.
   Foo foo = 2;
-}
-
-// Response for UpsertFoo.
-message UpsertFooResponse {
-  // The upserted foo with any server side generated fields populated.
-  Foo foo = 1;
 }
 
 // Request for DeleteFoo.
