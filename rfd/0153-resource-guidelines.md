@@ -231,17 +231,12 @@ The request MUST fail and return a `trace.NotFound` error if there is no matchin
 
 ```protobuf
 // Returns a single Foo matching the request
-    rpc GetFoo(GetFooRequest) returns (GetFooResponse);
+    rpc GetFoo(GetFooRequest) returns (Foo);
 
 message GetFooRequest {
   // A filter to match the Foo by. Some resource may require more parameters to match and
   // may not use the name at all.
   string foo_id = 1;
-}
-
-message GetFooResponse {
-  // The matched Foo resource.
-  Foo foo = 1;
 }
 ```
 
@@ -650,7 +645,7 @@ option go_package = "github.com/gravitational/teleport/api/gen/proto/go/teleport
 // FooService provides an API to manage Foos.
 service FooService {
   // GetFoo returns the specified Foo resource.
-  rpc GetFoo(GetFooRequest) returns (GetFooResponse);
+  rpc GetFoo(GetFooRequest) returns (Foo);
 
   // ListFoos returns a page of Foo resources.
   rpc ListFoos(ListFoosRequest) returns (ListFoosResponse);
@@ -674,11 +669,6 @@ message GetFooRequest {
   string foo_id = 1;
 }
 
-// Response for GetFoo.
-message GetFooResponse {
-  // The foo matching the request filters.
-  Foo foo = 1;
-}
 
 // Request for ListFoos.
 //
