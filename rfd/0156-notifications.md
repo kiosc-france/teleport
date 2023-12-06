@@ -36,9 +36,7 @@ Examples of potential use cases include being able to notify users of:
 Notifications will be stored in the backend database and be of two types:
 
 1. User-specific notifications: Targets a single specific user. An example is a notification to notify a user that their access request has been approved.
-   These notifications will be stored in the database under the key `/notifications/user/<the user's username>/<notification id>`.
 2. Global notifications: Targets multiple users. An example is a notification to notify users that there is a new access request needing review.
-   These notifications will be stored in the database under the key `/notifications/global/<notification id>`.
    They can be configured to target users based on one of the following matchers:
    1. Permissions: Targets all users with the specified RBAC permission(s).
    2. Role: Targets all users with the specified role(s).
@@ -46,53 +44,87 @@ Notifications will be stored in the backend database and be of two types:
 
 Since user-specific notifications are stored by username, notifications for SSO users will persist between sessions.
 
-Notifications will have a default TTL of 30 days, after which they will be automatically deleted. In some cases, notifications may also automatically be deleted prior to their TTL, for
-example, a notification reminding a user to complete their periodic access list review will be deleted once the user does it.
+Notifications will have a default TTL of 30 days, after which they will be automatically deleted. In some cases, notifications may also automatically be deleted prior to their TTL if configured to do so.
+
+#### Backend Database
+
+User-specific notifications will be stored in the database under the key `/notifications/user/<cluster id>/<auth connector>/<the user's username>/<notification id>`.
+
+We include the `cluster id` in the key to prevent the edge case where a user from the root cluster accesses notifications in a leaf cluster that has a user with the same username, this would cause the two users' notifications
+to be merged.
+
+We include the `auth connector` in the key to prevent the edge case where a SSO user has the same username as a local user (or a user using another auth connector), this would cause the users' notifications to be merged.
+
+Global notifications will be stored in the database under the key `/notifications/global/<notification id>`.
+
+There will be a hard cap of 10,000 notifications which can exist at any given time. If a new notification is added beyond this point, it will delete and replace the oldest existing notification.
 
 #### Types and Protos
 
 ###### Notification Item
 
-These will be stored under `/notification/user/<username>/<notification id>`. They can also also be nested in a `GlobalNotification`.
+If this is a user-specific notification, it will be stored as-is under `/notification/user/<cluster id>/<auth connector>/<username>/<notification id>`.
+
+If this is a global notification, it will be nested in a [`GlobalNotification`](#global-notifications).
 
 ```protobuf
 // Notification represents a notification item.
 message Notification {
-   // ID is the unique identifier for the notification.
-   string ID = 1 [(gogoproto.jsontag) = "id"];
-   // Code is the unique notification code.
-   string Code = 2 [(gogoproto.jsontag) = "code"];
-   // Title is the title/header of the notification.
-   string Title = 3 [(gogoproto.jsontag) = "title"];
-   // Description is the text content of the notification.
-   string Description = 4 [(gogoproto.jsontag) = "description"];
-   // Created is when the notification was created, in UNIX time.
-   google.protobuf.Timestamp Created = 5 [(gogoproto.jsontag) = "created"];
-   // TTL is how long the notification should last for before automatically expiring. Default is 30 days.
-   int64 TTL = 6 [(gogoproto.jsontag) = "ttl,omitempty"];
-   // Metadata is optional additional metadata to be added to the notification.
-   google.protobuf.Struct Metadata = 7 [(gogoproto.jsontag) = "metadata,omitempty"];
+   // id is the UUID of the notification, in UUIDv7 format.
+   string id = 1;
+   // code is the unique notification code.
+   // This code represents the type of notification this is, eg. `access-request-approved`.
+   string code = 2;
+   // title is the title/header of the notification.
+   string title = 3;
+   // description is the text content of the notification.
+   string description = 4;
+   // created is when the notification was created, in UNIX time.
+   google.protobuf.Timestamp created = 5;
+   // ttl is how long the notification should last before automatically expiring. Default is 30 days.
+   int64 ttl = 6;
+   // labels is optional additional metadata to be added to the notification in the form of labels.
+   map<string, string> labels = 7;
 }
 ```
 
-###### User Notification Preferences Item
+###### User Notification State Item
 
-Each user will have one `UserNotificationStates` object which will keep track of the notifications they have seen or dismissed.
+Each user will have a unique `NotificationState` item for every notification they have interacted with.
 
-These will be stored once per user in the database under `/notifications/states/<username>`
+This will keep track of whether the user has viewed (clicked on) or dismissed the notification.
+
+These will be stored per user per notification in the database under `/notification/states/<cluster id>/<auth connector>/<username>/<notification id>`
+
+Dismissed states are only going to be possible for global notifications. If a user dismisses a user-specific notification directed at them, instead of updating this state to `dismissed`, the notification will just be
+deleted as well as its state item.
 
 ```protobuf
-// UserNotificationStates represents a user's notification states. This is to keep track
-// of the notifications the user has seen and dismissed.
-message UserNotificationStates {
-   // ReadNotifications is a list of notification IDs that the user has already seen and will be marked as read.
-   repeated string ReadNotifications = 1 [(gogoproto.jsontag) = "read_notifications"];
-   // DismissedNotifications is a list of notification IDs that the user has chosen to hide. These will be filtered out when notifications are fetched.
-   repeated string DismissedNotifications = 2 [(gogoproto.jsontag) = "dismissed_notifications"];
+// UserNotificationState represents a notification's state for a user. This is to keep track
+// of whether the user has viewed or dismissed the notification.
+message UserNotificationState {
+   // notification_state is the state of this notification for the user. This can be either "viewed" or "dismissed".
+   string notification_state = 1;
 }
 ```
 
-###### Global Notifications
+##### User Last Seen Notification Item
+
+This keeps track of the timestamp of the latest notification the user has seen in their notifications list. This is used in order to determine whether
+the user has any new notifications since then that they haven't seen yet. Note that "seeing" a notification merely refers to seeing it in the list, this is different from "viewing"
+a notification which involves clicking on it.
+
+This will be stored once per user in the database under `/notifications/last_seen/<cluster id>/<auth connector>/<username>`.
+
+```protobuf
+// UserLastSeenNotification represents the timestamp of the last notification that they have seen.
+message UserLastSeenNotification  {
+   // last_seen_time is the timestamp of the last notification that the user has seen.
+   google.protobuf.Timestamp last_seen_time = 1;
+}
+```
+
+###### Global Notification Item
 
 These will be stored under `/notification/global/<notification id>`.
 
@@ -100,68 +132,72 @@ These will be stored under `/notification/global/<notification id>`.
 // GlobalNotification represents a global notification.
 message GlobalNotification {
    // Matcher for determining the target of this notification.
-   oneof Matcher {
-   // ByPermissions represents the RoleConditions needed for a user to receive this notification.
-   // If multiple permissions are defined and `MatchAllConditions` is true, the user will need to have
-   // all of them to receive this notification.
-   repeated RoleConditions ByPermissions = 1 [(gogoproto.jsontag) = "by_permissions"];
-   // ByRoles represents the roles targeted by this notification.
-   // If multiple roles are defined and `MatchAllConditions` is true, the user will need to have all
-   // of them to receive this notification.
-   repeated string ByRoles = 2 [(gogoproto.jsontag) = "by_roles"];
-   // All represents whether to target all users, regardless of roles or permissions.
-   bool All = 3 [(gogoproto.jsontag) = "all"];
+   oneof matcher {
+      // by_permissions represents the RoleConditions needed for a user to receive this notification.
+      // If multiple permissions are defined and `MatchAllConditions` is true, the user will need to have
+      // all of them to receive this notification.
+      ByPermissions by_permissions = 1;
+      // by_roles represents the roles targeted by this notification.
+      // If multiple roles are defined and `MatchAllConditions` is true, the user will need to have all
+      // of them to receive this notification.
+      ByRoles by_roles = 2;
+      // all represents whether to target all users, regardless of roles or permissions.
+      bool all = 3;
    }
-   // MatchAllConditions is whether or not all the conditions specified by the matcher must be met,
+   // match_all_conditions is whether or not all the conditions specified by the matcher must be met,
    // if false, only one of the conditions needs to be met.
-   bool MatchAllConditions = 4 [(gogoproto.jsontag) = "match_all_conditions"];
-   // Notification is the notification itself.
-   Notification Notification = 5 [(gogoproto.jsontag) = "notification"];
+   bool match_all_conditions = 4;
+   // notification is the notification itself.
+   Notification notification = 5;
+}
+
+// ByPermissions represents the RoleConditions needed for a user to receive this notification.
+message ByPermissions {
+   repeated RoleConditions role_conditions = 1;
+}
+
+// ByRoles represents the roles targeted by this notification.
+message ByRoles {
+   repeated string roles = 1;
 }
 ```
 
 ##### Unique Notification Codes
 
 Each notification will have a code identifying the type of notification it is. This is so that we can handle notifications in the UI
-differently based on their type, such as determining what action is performed when interacting with it (if any) and which icon it should have, this is
-similar to what we do for audit log events.
+differently based on their type, such as determining what action is performed when interacting with it and which icon it should have.
 
 ###### Example codes
 
 ```go
-
 // Notification codes for identifying different notification types.
 //
-//   - Notification codes start with "N" and belong in this const block.
-//
-//   - Related notifications are grouped starting with the same number.
-//     eg: All access request-related notifications are grouped under 1xxx.
-//
-//   - Suffix each code with one of these letters: A (actionable), I (informational), W (warning).
+// Notifications related to the same feature should be grouped together and follow the same naming pattern.
 //
 // After defining a notification code, make sure to keep
 // `web/packages/teleport/src/services/notifications/types.ts` in sync.
 const (
    // DefaultInformationalCode is the default code for an informational notification.
-   DefaultInformationalCode = "N0000I"
+   DefaultInformationalCode = "default-informational"
    // DefaultWarningCode is the default code for a warning notification.
-   DefaultWarningCode = "N0000W"
+   DefaultWarningCode = "default-warning"
 
-   // ManuallyCreatedInformationalCode is the code for informational notifications that were manually created using `tctl`.
-   ManuallyCreatedInformationalCode = "N0001I"
-   // ManuallyCreatedWarningCode is the code for warning notifications that were manually created using `tctl`.
-   ManuallyCreatedWarningCode = "N0001W"
+   // UserCreatedInformationalCode is the code for informational notifications that were manually created by a user using `tctl`.
+   UserCreatedInformationalCode = "user-created-informational"
+   // UserCreatedWarningCode is the code for warning notifications that were manually created by a user using `tctl`.
+   UserCreatedWarningCode = "user-created-warning"
 
-   // AccessRequestReceivedCode is the code for the notification of a user receiving an access request.
-   AccessRequestReceivedCode = "N1000A"
+   // AccessRequestPendingCode is the code for the notification of an access request pending review. This is the notification received
+   // by a user when an access request needs their review.
+   AccessRequestPendingCode = "access-request-pending"
    // AccessRequestApprovedCode is the code for the notification of a user's access request being approved.
-   AccessRequestApprovedCode = "N1001A"
+   AccessRequestApprovedCode = "access-request-approved"
    // AccessRequestDeniedCode is the code for the notification of a user's access request being denied.
-   AccessRequestDeniedCode = "N1001I"
+   AccessRequestDeniedCode = "access-request-denied"
 )
 ```
 
-For example, if a notification's code is `N1000A`, the UI will make the notification clickable and redirect to the page for reviewing the access request.
+For example, if a notification's code is `access-request-pending`, the UI will make the notification redirect to the page for reviewing the access request.
 
 #### Usage
 
@@ -171,36 +207,40 @@ watches for any changes to the database in order to perform real-time actions wh
 These are some examples of methods of the service which can be called:
 
 ```go
-// Creates a user-specific notification for a user. This will be stored in the database as a Notification under `/notifications/user/<username>/<notification.id>`.
-NotifyUser(username string, notification types.Notification) error
+// Creates a user-specific notification for a user. This will be stored in the database as a Notification under `/notifications/user/<cluster id>/<auth connector>/<username>/<notification.id>`.
+NotifyUser(ctx context.Context, username string, notification types.Notification) error
 
 // Creates a global notification that matches users based on the specified role conditions (permissions). This will be stored in the database as a GlobalNotification under `/notifications/global/<notification.id>`.
-NotifyUsersByPermissions(roleConditions []types.RoleConditions, notification types.Notification, matchAllConditions bool) error
+NotifyUsersByPermissions(ctx context.Context, roleConditions []types.RoleConditions, notification types.Notification, matchAllConditions bool) error
 
 // Creates a global notification that matches users who have the specified roles. This will be stored in the database as a GlobalNotification under `/notifications/global/<notification.id>`.
-NotifyUsersByRole(roles []string, notification types.Notification, matchAllConditions bool) error
+NotifyUsersByRole(ctx context.Context, roles []string, notification types.Notification, matchAllConditions bool) error
 
 // Notifies all users. This will be stored in the database as a GlobalNotification under `/notifications/global/<notification.id>`.
-NotifyAllUsers(notification types.Notification) error
+NotifyAllUsers(ctx context.Context, notification types.Notification) error
 
 // Fetches all notifications for the user, including all matching global notifications.
 // This will filter out notifications not meant for the user, as well as notifications the user has manually dismissed.
 // During this filtering, any notifications marked for expiry which are identified to be older than 30 days will be deleted from the database.
-// Additionally, any notification IDs found in the user's UserNotificationStates for notifications that no longer exist will be removed.
-GetNotificationsForUser(user types.User) ([]types.Notification, error)
+// Additionally, any notification IDs found in the user's UserNotificationState for notifications that no longer exist will be removed.
+GetNotificationsForUser(ctx context.Context, user types.User) ([]types.Notification, error)
 
 // Checks if a user matches a global notification's matcher. This will be called by `getNotificationsForUser()` when filtering global notifications.
 // This function may include some hard-coded checks for specific cases, for example, to prevent a user from matching a notification to review their own access request.
-UserMatchesGlobalNotification(user types.User, types.GlobalNotification) (bool, error)
+UserMatchesGlobalNotification(ctx context.Context, user types.User, types.GlobalNotification) (bool, error)
 
 // Deletes a global notification from the database by deleting `/notifications/global/<notification.id>`
-DeleteGlobalNotification(notificationID string) error
+DeleteGlobalNotification(ctx context.Context, notificationID string) error
 
-// Marks the specified notifications as read for the user by updating the `ReadNotifications` list under `/notifications/states/<username>`.
-MarkNotificationsAsRead(username string, notificationIDs []string) error
+// Sets the timestamp of the last notification a user has seen by updating the `UserLastSeenNotification` under `/notifications/last_seen/<cluster id>/<auth connector>/<username>`
+SetUserLastSeenNotification(ctx context.Context, username string, timestamp time.Time)
 
-// Marks the specified notifications as dismissed by updating the `DismissedNotifications` list under `/notifications/states/<username>`.
-MarkNotificationsAsDismissed(username string, notificationIDs []string) error
+// Marks the specified notification as viewed for the user by setting the `UserNotificationState` under `/notification/states/<cluster id>/<auth connector>/<username>/<notification id>` to `viewed`.
+MarkNotificationAsViewed(ctx context.Context, username string, notificationID string) error
+
+// Marks the specified notification as dismissed for the user by setting the `UserNotificationState` under `/notification/states/<cluster id>/<auth connector>/<username>/<notification id>` to `dismissed`.
+// If the notification is user-specific, this deletes the notification and the notification state.
+MarkNotificationAsDismissed(ctx context.Context, username string, notificationID string) error
 ```
 
 ##### Example Usage:
@@ -237,31 +277,34 @@ notifyUsersByPermissions(roleConditions, notification)
 #### Web UI
 
 Upon logging in, a request will be made to fetch all the user's notifications. This fetch is performed asynchronously after the login so that the login process is not slowed down
-by having to wait for the notifications response. The backend will query the database and return the list of the user's notifications after filtering out those not meant for them. In
+by having to wait for the notifications response. The notifications service will query the database and return the list of the user's notifications after filtering out those not meant for them. In
 the case of global notifications, only notifications with matchers that match the user (ie. by role or permissions) will be kept. This returned list will be stored in the browser's
-local storage until the user logs out. A WebSocket connection will then be established with the backend. Any new notifications will be picked up by the database watcher and, if meant
+local storage until the user logs out. A WebSocket connection will then be established with the proxy. Any new notifications will be picked up by the database watcher and, if meant
 for the user, will be sent to their client via WebSocket. Since the web session renews every 10 minutes, the WebSocket connection will need to be closed and reopened on every session renewal.
+
+It should be noted that due to potential time constraints, the initial version of the implementation may not include the WebSocket and database watcher components, and will instead fetch
+notifications on every page load.
 
 This is a simplified diagram of the flow:
 
 ```mermaid
 sequenceDiagram
    participant WebUI
-   participant Backend
-   participant Database
+   participant ProxyAuth as Proxy & Auth
+   participant BackendDB as Backend DB
    participant DBWatcher as DB Watcher & WebSocket Handler
 
-   WebUI->>+Backend: Log in and fetch notifications
-   Backend->>+Database: Query database for notifications and user's notification states
-   Database-->>-Backend: Return notifications and user's notification states
-   Backend->>Backend: Filter out notifications that don't target the user or that were dismissed
-   Backend-->>-WebUI: Return filtered notifications
+   WebUI->>+ProxyAuth: Log in and fetch notifications
+   ProxyAuth->>+BackendDB: Query database for notifications and user's notification states
+   BackendDB-->>-ProxyAuth: Return notifications and user's notification states
+   ProxyAuth->>ProxyAuth: Filter out notifications that don't target the user or that were dismissed
+   ProxyAuth-->>-WebUI: Return filtered notifications
    WebUI->>+DBWatcher: Establish WebSocket connection
-   DBWatcher->>+Database: Watch for new notifications added  to database
+   DBWatcher->>+BackendDB: Watch for new notifications added  to database
 
    alt New notification
-      Backend->>Database: Add notification to database
-      Database->>DBWatcher: Watcher detects new notification for user in the database
+      ProxyAuth->>BackendDB: Add notification to database
+      BackendDB->>DBWatcher: Watcher detects new notification for user in the database
    end
 
    DBWatcher-->>-WebUI: Send notification to user via WebSocket
@@ -273,13 +316,10 @@ notification to those who match the notification's matchers.
 
 ###### Notes
 
-This flow is designed to allow for real-time notifications and to limit the number of times a full fetch of the user's notifications from the database needs to be performed, which can be performance heavy.
+The proposed flow including WebSockets is designed to allow for real-time notifications and to limit the number of times a full fetch of the user's notifications from the database needs to be performed, which can be performance heavy.
 One limitation of this proposed flow is the case where a user closes all Web UI tabs while still logged in, any new notifications they receive until they open it again won't be received by the UI since
 there would be no open WebSocket connection to receive them. One way to mitigate this would be to have the frontend detect whether a newly opened Web UI tab is the only one, and if so, do a
 full fetch of the user's notifications.
-
-It should be noted that due to potential time constraints, the initial version of the implementation may not include the WebSocket and database watcher components, and will instead fetch
-notifications on every page load.
 
 ###### Stretch goal
 
@@ -288,11 +328,7 @@ We could also look into implementing the use of a service worker that can run an
 
 #### tsh
 
-Upon logging in with `tsh`, the user's notifications will be fetched in order to inform them on the post-login status screen whether they have any new unread notifications. Since this fetch can't be performed asynchronously
-like in the Web UI, there will be a 1.5-second timeout on it to prevent it from slowing down the login too much in case it takes too long. We currently don't have this timeout for cluster alerts on login, however, it can be
-assumed that due to the larger number of notifications and additional filtering, fetching notifications is likely to take longer. This timeout may be adjusted or removed once we have more insight into how long it typically takes.
-
-Running `tsh notifications ls` will fetch all notifications with no timeout.
+The first version will not include `tsh` support for notifications. This can be explored in the future, and would likely be limited to a `tsh notifications ls` command for listing notifications.
 
 ### UX
 
@@ -301,39 +337,21 @@ Most of the details regarding the UX are still being discussed and have yet to b
 #### Web UI
 
 The Web UI will feature a notification icon on the top toolbar, if the user has any unread notifications, this icon will have a badge with the number of unread notifications. Clicking this
-button will open the notifications pane which will list the user's notifications. After the notifications pane is opened, any previously unread notifications will be marked as read (a request
-will also be made to update the database).
+button will open the notifications pane which will list the user's notifications. After the notifications pane is opened, any previously unread notifications will be marked as read (this is done by making a request
+which updates the user's last seen notification timestamp). Any notification that has not yet been viewed (clicked on) will be highlighted to differentiate it from the rest.
 
 Notifications with long descriptions beyond a certain length will be truncated and optionally expandable to show their full content. The user has the option to dismiss a notification which means
-that they will never see it again. They can also manually mark a notification as unread. Beyond that, the interactivity of a notification in this list depends on its type which is identified by its [code](#unique-notification-codes),
-Informational and warning notifications won't be interactive and will only display their text content. Actionable notifications will be interactive and able to perform an action, for example in the case
-of a new access request notification, it can redirect the user to the page where they can review the request (the action any given notification type performs will be manually configured in the Web UI code).
+that they will never see it again. The interactivity of a notification in this list depends on its type which is identified by its [code](#unique-notification-codes). Informational and warning notifications (such as those created manually via `tctl`)
+will be clickable and open a modal with the full text content. Other notifications can be interactive and able to perform specific actions, for example in the case of a new access request notification, it can redirect the user to the page where they can
+review the request (the action any given notification type performs will be manually configured in the Web UI code). Notifications may also have a "quick action" beyond just being clickable, for example, in the case of a notification for an approved access request,
+there may be a quick action button to assume the new roles. Interacting with a notification will mark it as viewed.
 
 ##### Stretch goal
 
 Users will also have the ability to manage their notifications preferences in their settings. Particularly, the ability to mute certain types
-of notifications, these will be stored in the user's user preferences.
+of notifications, these will be stored in the user's user preferences. This may not be included in the first version.
 
 #### CLI
-
-##### tsh
-
-Upon logging in with `tsh`, the post-login status screen will include how many unread notifications they have, if any, and how to view them. If this initial fetch for notifications times out, they will be shown
-a generic message telling them to run `$ tsh notifications ls` to view their notifications.
-
-Notifications can be viewed by running:
-
-```shell
-$ tsh notifications ls
-```
-
-All notifications listed will be marked as read by the user.
-
-The user can also dismiss a notification using:
-
-```shell
-$ tsh notifications dismiss <notification-id>
-```
 
 ##### tctl
 
@@ -343,17 +361,17 @@ Users with RBAC `write` permissions for the `notifications` resource will be abl
 $ tctl notifications create --title=<title> --description=<description> --type=<info | warning> (--all | --roles=<roles-to-target>) --ttl=<ttl>
 ```
 
-- `--type` is the type of notification, either `info` or `warning`. All this does is determine which icon will be used when showing the notification in the UI.
+- `--type` is the type of notification, either `info` or `warning`. All this does is determine which icon/colors will be used when showing the notification in the UI.
 - `--all` means this notification will target all users.
 - `--roles` are the role(s) that this notification should target (ie. `ByRoles`). If multiple roles are specified here, users will only need to have one of the roles to be targeted.
-- `--ttl` is the notifications time to live, it will automatically expire and be deleted after this. The default is 30 days.
+- `--ttl` is the notification's time to live, it will automatically expire and be deleted after this. The default is 30 days.
 
 ###### Example usage
 
 ```shell
 $  tctl notifications create \
    --title="Enroll an MFA device" \
-   --description="We will soon be enforcing MFA in our Teleport cluster, please enroll a device to avoid being locked out of your account." \
+   --description="We will soon be enforcing MFA in this cluster, please enroll a device to avoid being locked out of your account." \
    --type=info \
    --all \
    --ttl=45d
@@ -367,7 +385,7 @@ $ tctl notifications delete <notification-id>
 
 ###### Stretch goal
 
-Support a `--permissions` flag that accepts a predicate expression which will allow cluster admins to also be able target users by permissions.
+Support a `--permissions` flag that accepts a predicate expression which will allow cluster admins to also be able to target users by permissions.
 
 ### Security
 
@@ -390,7 +408,8 @@ all cluster alert functionality will be removed.
 
 ##### Leaf Clusters
 
-Notifications between root and leaf clusters won't be initially supported and will be unique to each cluster. This can be explored as a stretch goal.
+Notifications will be unique to each cluster. However, similar to the behaviour of cluster alerts today, notifications in a leaf cluster will be accessible from the root cluster.
+When a user in the Web UI switches to the leaf cluster, their notifications list will be listing those from the leaf cluster. We can possibly include some type of indicator in the notifications pane in the Web UI to make this clear.
 
 ### Audit Events
 
