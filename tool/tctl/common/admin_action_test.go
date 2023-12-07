@@ -54,6 +54,10 @@ func TestAdminActionMFA(t *testing.T) {
 
 	t.Run("Users", s.testAdminActionMFA_Users)
 	t.Run("Roles", s.testAdminActionMFA_Roles)
+	t.Run("ClusterAuthPreference", s.testAdminActionMFA_ClusterAuthPreference)
+	t.Run("NetworkRestrictions", s.testAdminActionMFA_NetworkRestrictions)
+	t.Run("NetworkingConfig", s.testAdminActionMFA_NetworkingConfig)
+	t.Run("SessionRecordingConfig", s.testAdminActionMFA_SessionRecordingConfig)
 }
 
 func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
@@ -137,6 +141,156 @@ func (s *adminActionTestSuite) testAdminActionMFA_Roles(t *testing.T) {
 			resourceCreate: createRole,
 			resourceGet:    getRole,
 			resourceDelete: deleteRole,
+		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_ClusterAuthPreference(t *testing.T) {
+	ctx := context.Background()
+
+	originalAuthPref, err := s.authServer.GetAuthPreference(ctx)
+	require.NoError(t, err)
+
+	createAuthPref := func() error {
+		// To maintain the current auth preference for each test case, get
+		// the current auth preference from config and change it to dynamic.
+		authPref, err := s.authServer.GetAuthPreference(ctx)
+		if err != nil {
+			return trace.Wrap(err)
+		}
+		authPref.SetOrigin(types.OriginDynamic)
+		return s.authServer.SetAuthPreference(ctx, authPref)
+	}
+
+	getAuthPref := func() (types.Resource, error) {
+		return s.authServer.GetAuthPreference(ctx)
+	}
+
+	resetAuthPref := func() error {
+		return s.authServer.SetAuthPreference(ctx, originalAuthPref)
+	}
+
+	t.Run("ResourceCommands", func(t *testing.T) {
+		s.testAdminActionMFA_ResourceCommand(t, ctx, resourceCommandTestCase{
+			resource:       originalAuthPref,
+			resourceCreate: createAuthPref,
+			resourceDelete: resetAuthPref,
+		})
+	})
+
+	t.Run("EditCommand", func(t *testing.T) {
+		s.testAdminActionMFA_EditCommand(t, ctx, editCommandTestCase{
+			resourceRef:    getResourceRef(originalAuthPref),
+			resourceCreate: createAuthPref,
+			resourceGet:    getAuthPref,
+			resourceDelete: resetAuthPref,
+		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_NetworkRestrictions(t *testing.T) {
+	ctx := context.Background()
+
+	netRestrictions := types.NewNetworkRestrictions()
+
+	createNetworkRestrictions := func() error {
+		return s.authServer.SetNetworkRestrictions(ctx, netRestrictions)
+	}
+
+	getNetworkRestrictions := func() (types.Resource, error) {
+		return s.authServer.GetNetworkRestrictions(ctx)
+	}
+
+	resetNetworkRestrictions := func() error {
+		return s.authServer.DeleteNetworkRestrictions(ctx)
+	}
+
+	t.Run("ResourceCommands", func(t *testing.T) {
+		s.testAdminActionMFA_ResourceCommand(t, ctx, resourceCommandTestCase{
+			resource:       netRestrictions,
+			resourceCreate: createNetworkRestrictions,
+			resourceDelete: resetNetworkRestrictions,
+		})
+	})
+
+	t.Run("EditCommand", func(t *testing.T) {
+		s.testAdminActionMFA_EditCommand(t, ctx, editCommandTestCase{
+			resourceRef:    getResourceRef(netRestrictions),
+			resourceCreate: createNetworkRestrictions,
+			resourceGet:    getNetworkRestrictions,
+			resourceDelete: resetNetworkRestrictions,
+		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_NetworkingConfig(t *testing.T) {
+	ctx := context.Background()
+
+	netConfig := types.DefaultClusterNetworkingConfig()
+	netConfig.SetOrigin(types.OriginDynamic)
+
+	createNetConfig := func() error {
+		return s.authServer.SetClusterNetworkingConfig(ctx, netConfig)
+	}
+
+	getNetConfig := func() (types.Resource, error) {
+		return s.authServer.GetClusterNetworkingConfig(ctx)
+	}
+
+	resetNetConfig := func() error {
+		return s.authServer.SetClusterNetworkingConfig(ctx, types.DefaultClusterNetworkingConfig())
+	}
+
+	t.Run("ResourceCommands", func(t *testing.T) {
+		s.testAdminActionMFA_ResourceCommand(t, ctx, resourceCommandTestCase{
+			resource:       netConfig,
+			resourceCreate: createNetConfig,
+			resourceDelete: resetNetConfig,
+		})
+	})
+
+	t.Run("EditCommand", func(t *testing.T) {
+		s.testAdminActionMFA_EditCommand(t, ctx, editCommandTestCase{
+			resourceRef:    getResourceRef(netConfig),
+			resourceCreate: createNetConfig,
+			resourceGet:    getNetConfig,
+			resourceDelete: resetNetConfig,
+		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_SessionRecordingConfig(t *testing.T) {
+	ctx := context.Background()
+
+	sessionRecordingConfig := types.DefaultSessionRecordingConfig()
+	sessionRecordingConfig.SetOrigin(types.OriginDynamic)
+
+	createSessionRecordingConfig := func() error {
+		return s.authServer.SetSessionRecordingConfig(ctx, sessionRecordingConfig)
+	}
+
+	getSessionRecordingConfig := func() (types.Resource, error) {
+		return s.authServer.GetSessionRecordingConfig(ctx)
+	}
+
+	resetSessionRecordingConfig := func() error {
+		return s.authServer.SetSessionRecordingConfig(ctx, types.DefaultSessionRecordingConfig())
+	}
+
+	t.Run("ResourceCommands", func(t *testing.T) {
+		s.testAdminActionMFA_ResourceCommand(t, ctx, resourceCommandTestCase{
+			resource:       sessionRecordingConfig,
+			resourceCreate: createSessionRecordingConfig,
+			resourceDelete: resetSessionRecordingConfig,
+		})
+	})
+
+	t.Run("EditCommand", func(t *testing.T) {
+		s.testAdminActionMFA_EditCommand(t, ctx, editCommandTestCase{
+			resourceRef:    getResourceRef(sessionRecordingConfig),
+			resourceCreate: createSessionRecordingConfig,
+			resourceGet:    getSessionRecordingConfig,
+			resourceDelete: resetSessionRecordingConfig,
 		})
 	})
 }
@@ -399,8 +553,8 @@ func runTestSubCase(t *testing.T, ctx context.Context, client auth.ClientI, tc a
 
 func getResourceRef(r types.Resource) string {
 	switch kind := r.GetKind(); kind {
-	case types.KindClusterAuthPreference:
-		// single resources are referred to by kind alone.
+	case types.KindClusterAuthPreference, types.KindNetworkRestrictions, types.KindClusterNetworkingConfig, types.KindSessionRecordingConfig:
+		// singleton resources are referred to by kind alone.
 		return kind
 	default:
 		return fmt.Sprintf("%v/%v", r.GetKind(), r.GetName())
