@@ -35,6 +35,7 @@ import (
 	"github.com/gravitational/teleport/api/constants"
 	"github.com/gravitational/teleport/api/mfa"
 	"github.com/gravitational/teleport/api/types"
+	apiutils "github.com/gravitational/teleport/api/utils"
 	"github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/auth/mocku2f"
 	wancli "github.com/gravitational/teleport/lib/auth/webauthncli"
@@ -52,6 +53,7 @@ func TestAdminActionMFA(t *testing.T) {
 	s := newAdminActionTestSuite(t)
 
 	t.Run("Users", s.testAdminActionMFA_Users)
+	t.Run("UserGroups", s.testAdminActionMFA_UserGroups)
 }
 
 func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
@@ -98,6 +100,38 @@ func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
 			resource:       user,
 			resourceCreate: createUser,
 			resourceDelete: deleteUser,
+		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_UserGroups(t *testing.T) {
+	ctx := context.Background()
+
+	userGroup, err := types.NewUserGroup(types.Metadata{
+		Name:   "teleusergroup",
+		Labels: map[string]string{"label": "value"},
+	}, types.UserGroupSpecV1{})
+	require.NoError(t, err)
+
+	t.Run("ResourceCommands", func(t *testing.T) {
+		resourceYamlPath := filepath.Join(t.TempDir(), fmt.Sprintf("%v.yaml", userGroup.GetKind()))
+		f, err := os.Create(resourceYamlPath)
+		require.NoError(t, err)
+		require.NoError(t, utils.WriteYAML(f, userGroup))
+
+		// Only deletion is permitted through tctl.
+		rmCommand := fmt.Sprintf("rm %v/%v", userGroup.GetKind(), userGroup.GetName())
+		t.Run(rmCommand, func(t *testing.T) {
+			s.runTestCase(t, ctx, adminActionTestCase{
+				command:    rmCommand,
+				cliCommand: &tctl.ResourceCommand{},
+				setup: func() error {
+					return s.authServer.CreateUserGroup(ctx, userGroup)
+				},
+				cleanup: func() error {
+					return s.authServer.DeleteUserGroup(ctx, userGroup.GetName())
+				},
+			})
 		})
 	})
 }
@@ -177,6 +211,7 @@ func newAdminActionTestSuite(t *testing.T) *adminActionTestSuite {
 	username := "admin"
 	adminRole, err := types.NewRole(username, types.RoleSpecV6{
 		Allow: types.RoleConditions{
+			GroupLabels: types.Labels{types.Wildcard: apiutils.Strings{types.Wildcard}},
 			Rules: []types.Rule{
 				{
 					Resources: []string{types.Wildcard},
