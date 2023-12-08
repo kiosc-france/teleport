@@ -1,4 +1,4 @@
-//go:build unix
+//go:build darwin
 
 /*
  * Teleport
@@ -18,30 +18,29 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package utils
+package uds
 
 import (
-	"net"
+	"syscall"
 
-	"github.com/gravitational/teleport/lib/utils/uds"
 	"github.com/gravitational/trace"
 )
 
-// DualPipeNetConn creates a pipe to connect a client and a server. The
-// two net.Conn instances are wrapped in an PipeNetConn which holds the source and
-// destination addresses.
-//
-// The pipe is constructed from a syscall.Socketpair instead of a net.Pipe because
-// the synchronous nature of net.Pipe causes it to deadlock when attempting to perform
-// TLS or SSH handshakes.
-func DualPipeNetConn(srcAddr net.Addr, dstAddr net.Addr) (net.Conn, net.Conn, error) {
-	client, server, err := uds.NewSocketpair(uds.SocketTypeStream)
+// cloexecSocketpair returns a unix/local stream socketpair whose file
+// descriptors are flagged close-on-exec. This implementation acquires
+// [syscall.ForkLock] as it creates the socketpair and sets the two file
+// descriptors close-on-exec.
+func cloexecSocketpair(t SocketType) (uintptr, uintptr, error) {
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
+
+	fds, err := syscall.Socketpair(syscall.AF_UNIX, t.proto(), 0)
 	if err != nil {
-		return nil, nil, trace.Wrap(err)
+		return 0, 0, trace.Wrap(err)
 	}
 
-	serverConn := NewConnWithAddr(server, dstAddr, srcAddr)
-	clientConn := NewConnWithAddr(client, srcAddr, dstAddr)
+	syscall.CloseOnExec(fds[0])
+	syscall.CloseOnExec(fds[1])
 
-	return serverConn, clientConn, nil
+	return uintptr(fds[0]), uintptr(fds[1]), nil
 }
