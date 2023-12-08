@@ -12,6 +12,14 @@ rely on parsing the output from multiple nodes should pass the `--log-dir` flag
 to `tsh ssh`, which will create a directory where the separated output of each node
 will be written.
 
+#### `windows_desktop_service` no longer writes to the NTAuth store
+
+In Teleport 15, the process that periodically publishes Teleport's user CA to
+the Windows NTAuth store has been removed. It is not necessary for Teleport to
+perform this step since it must be done by an administrator at installation
+time. As a result, Teleport's service acount can use more restrictive
+permissions.
+
 ## 14.0.0 (09/20/23)
 
 Teleport 14 brings the following new major features and improvements:
