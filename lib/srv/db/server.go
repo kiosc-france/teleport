@@ -1116,7 +1116,7 @@ func (s *Server) authorize(ctx context.Context) (*common.Session, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	autoCreate, databaseRoles, err := authContext.Checker.CheckDatabaseRoles(database)
+	autoCreate, databaseRoles, err := authContext.Checker.CheckDatabaseRoles(database, identity.RouteToDatabase.Roles)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
