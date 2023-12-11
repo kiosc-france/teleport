@@ -54,6 +54,7 @@ func TestAdminActionMFA(t *testing.T) {
 
 	t.Run("Users", s.testAdminActionMFA_Users)
 	t.Run("Roles", s.testAdminActionMFA_Roles)
+	t.Run("SAMLIdpServiceProvider", s.testAdminActionMFA_SAMLIdpServiceProvider)
 }
 
 func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
@@ -137,6 +138,55 @@ func (s *adminActionTestSuite) testAdminActionMFA_Roles(t *testing.T) {
 			resourceCreate: createRole,
 			resourceGet:    getRole,
 			resourceDelete: deleteRole,
+		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_SAMLIdpServiceProvider(t *testing.T) {
+	ctx := context.Background()
+
+	sp, err := types.NewSAMLIdPServiceProvider(types.Metadata{
+		Name: "test-saml-app",
+	}, types.SAMLIdPServiceProviderSpecV1{
+		// A test entity descriptor from https://sptest.iamshowcase.com/testsp_metadata.xml.
+		EntityDescriptor: `<?xml version="1.0" encoding="UTF-8"?>
+		<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" entityID="test-saml-app" validUntil="2025-12-09T09:13:31.006Z">
+			 <md:SPSSODescriptor AuthnRequestsSigned="false" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+					<md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>
+					<md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
+					<md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="https://sptest.iamshowcase.com/acs" index="0" isDefault="true"/>
+			 </md:SPSSODescriptor>
+		</md:EntityDescriptor>`,
+		EntityID: "test-saml-app",
+	})
+	require.NoError(t, err)
+
+	CreateSAMLIdPServiceProvider := func() error {
+		return s.authServer.CreateSAMLIdPServiceProvider(ctx, sp)
+	}
+
+	getSAMLIdPServiceProvider := func() (types.Resource, error) {
+		return s.authServer.GetSAMLIdPServiceProvider(ctx, sp.GetName())
+	}
+
+	deleteSAMLIdPServiceProvider := func() error {
+		return s.authServer.DeleteSAMLIdPServiceProvider(ctx, sp.GetName())
+	}
+
+	t.Run("ResourceCommands", func(t *testing.T) {
+		s.testAdminActionMFA_ResourceCommand(t, ctx, resourceCommandTestCase{
+			resource:       sp,
+			resourceCreate: CreateSAMLIdPServiceProvider,
+			resourceDelete: deleteSAMLIdPServiceProvider,
+		})
+	})
+
+	t.Run("EditCommand", func(t *testing.T) {
+		s.testAdminActionMFA_EditCommand(t, ctx, editCommandTestCase{
+			resourceRef:    getResourceRef(sp),
+			resourceCreate: CreateSAMLIdPServiceProvider,
+			resourceGet:    getSAMLIdPServiceProvider,
+			resourceDelete: deleteSAMLIdPServiceProvider,
 		})
 	})
 }
