@@ -32,7 +32,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	"github.com/gravitational/trace"
 	"github.com/jonboulle/clockwork"
@@ -255,12 +254,20 @@ type proxyV2Address4 struct {
 	DestinationPort uint16
 }
 
+// proxyV2Address4Size is the size of the proxyV2Address4 struct, statically
+// checked in proxyline_test.go.
+const proxyV2Address4Size = 12
+
 type proxyV2Address6 struct {
 	Source          [16]uint8
 	Destination     [16]uint8
 	SourcePort      uint16
 	DestinationPort uint16
 }
+
+// proxyV2Address6Size is the size of the proxyV2Address6 struct, statically
+// checked in proxyline_test.go.
+const proxyV2Address6Size = 36
 
 const (
 	Version2     = 2
@@ -273,7 +280,6 @@ const (
 // ReadProxyLineV2 reads PROXY protocol v2 line from the reader
 func ReadProxyLineV2(reader *bufio.Reader) (*ProxyLine, error) {
 	var header proxyV2Header
-	var ret ProxyLine
 	if err := binary.Read(reader, binary.BigEndian, &header); err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -286,20 +292,21 @@ func ReadProxyLineV2(reader *bufio.Reader) (*ProxyLine, error) {
 	}
 	if cmd == LocalCommand {
 		// LOCAL command, just skip address information and keep original addresses (no proxy line)
-		if header.Length > 0 {
-			_, err := io.CopyN(io.Discard, reader, int64(header.Length))
-			return nil, trace.Wrap(err)
-		}
-		return nil, nil
+		_, err := reader.Discard(int(header.Length))
+		return nil, trace.Wrap(err)
 	}
 	if cmd != ProxyCommand {
 		return nil, trace.BadParameter("unsupported command %d", cmd)
 	}
-	var size uint16
+	var ret ProxyLine
+	var addressLength uint16
 	switch header.Protocol {
 	case ProtocolTCP4:
+		addressLength = proxyV2Address4Size
+		if header.Length < addressLength {
+			return nil, trace.BadParameter("short address (%d bytes, expected at least %d)", header.Length, addressLength)
+		}
 		var addr proxyV2Address4
-		size = uint16(unsafe.Sizeof(addr))
 		if err := binary.Read(reader, binary.BigEndian, &addr); err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -307,8 +314,11 @@ func ReadProxyLineV2(reader *bufio.Reader) (*ProxyLine, error) {
 		ret.Source = net.TCPAddr{IP: addr.Source[:], Port: int(addr.SourcePort)}
 		ret.Destination = net.TCPAddr{IP: addr.Destination[:], Port: int(addr.DestinationPort)}
 	case ProtocolTCP6:
+		addressLength = proxyV2Address6Size
+		if header.Length < addressLength {
+			return nil, trace.BadParameter("short address (%d bytes, expected at least %d)", header.Length, addressLength)
+		}
 		var addr proxyV2Address6
-		size = uint16(unsafe.Sizeof(addr))
 		if err := binary.Read(reader, binary.BigEndian, &addr); err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -320,14 +330,13 @@ func ReadProxyLineV2(reader *bufio.Reader) (*ProxyLine, error) {
 	}
 
 	// If there are more bytes left it means we've got TLVs
-	if header.Length > size {
-		tlvsBytes := &bytes.Buffer{}
-
-		if _, err := io.CopyN(tlvsBytes, reader, int64(header.Length-size)); err != nil {
+	if header.Length > addressLength {
+		tlvBuf := make([]byte, header.Length-addressLength)
+		if _, err := io.ReadFull(reader, tlvBuf); err != nil {
 			return nil, trace.Wrap(err)
 		}
 
-		tlvs, err := UnmarshalTLVs(tlvsBytes.Bytes())
+		tlvs, err := UnmarshalTLVs(tlvBuf)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}

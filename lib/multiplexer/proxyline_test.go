@@ -27,6 +27,7 @@ import (
 	"net"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/gravitational/trace"
 	"github.com/jonboulle/clockwork"
@@ -55,6 +56,11 @@ var (
 	sampleEmptyTLV            = []byte{byte(PP2TypeTeleport), 0x00, 0x00}
 	sampleProxyV2LineTLV      = bytes.Join([][]byte{ProxyV2Prefix, {0x21, 0x11, 0x00, 0x12}, sampleIPv4Addresses, sampleTLV}, nil)
 	sampleProxyV2LineEmptyTLV = bytes.Join([][]byte{ProxyV2Prefix, {0x21, 0x11, 0x00, 0x0F}, sampleIPv4Addresses, sampleEmptyTLV}, nil)
+)
+
+var (
+	_ [proxyV2Address4Size]struct{} = [unsafe.Sizeof(proxyV2Address4{})]struct{}{}
+	_ [proxyV2Address6Size]struct{} = [unsafe.Sizeof(proxyV2Address6{})]struct{}{}
 )
 
 func TestReadProxyLine(t *testing.T) {

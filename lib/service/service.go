@@ -2663,28 +2663,8 @@ func (process *TeleportProcess) initSSH() error {
 			warnOnErr(process.closeImportedDescriptors(teleport.ComponentNode), log)
 
 			log.Infof("Service %s:%s is starting on %v %v.", teleport.Version, teleport.Gitref, cfg.SSH.Addr.Addr, process.Config.CachePolicy)
-
-			// Use multiplexer to leverage support for signed PROXY protocol headers.
-			mux, err := multiplexer.New(multiplexer.Config{
-				Context:             process.ExitContext(),
-				PROXYProtocolMode:   multiplexer.PROXYProtocolOff,
-				Listener:            listener,
-				ID:                  teleport.Component(teleport.ComponentNode, process.id),
-				CertAuthorityGetter: authClient.GetCertAuthority,
-				LocalClusterName:    conn.ServerIdentity.ClusterName,
-			})
-			if err != nil {
-				return trace.Wrap(err)
-			}
-
-			go func() {
-				if err := mux.Serve(); err != nil && !utils.IsOKNetworkError(err) {
-					mux.Entry.WithError(err).Error("node ssh multiplexer terminated unexpectedly")
-				}
-			}()
-			defer mux.Close()
-
-			go s.Serve(limiter.WrapListener(mux.SSH()))
+			listener = multiplexer.MaybeSignedPROXYV2Listener(listener, authClient.GetCertAuthority, conn.ServerIdentity.ClusterName, limiter)
+			go s.Serve(listener)
 		} else {
 			// Start the SSH server. This kicks off updating labels and starting the
 			// heartbeat.
