@@ -215,6 +215,9 @@ func (h *Handler) getNodeJoinScriptHandle(w http.ResponseWriter, r *http.Request
 	autoUpgrades := automaticUpgrades(h.ClusterFeatures)
 	if autoUpgrades {
 		autoUpgradesVersion, err = h.cfg.AutomaticUpgradesChannels.DefaultVersion(r.Context())
+		if err != nil {
+			return nil, trace.Wrap(err, "failed to get auto-upgrade version")
+		}
 	}
 
 	settings := scriptSettings{
@@ -263,6 +266,9 @@ func (h *Handler) getAppJoinScriptHandle(w http.ResponseWriter, r *http.Request,
 	autoUpgrades := automaticUpgrades(h.ClusterFeatures)
 	if autoUpgrades {
 		autoUpgradesVersion, err = h.cfg.AutomaticUpgradesChannels.DefaultVersion(r.Context())
+		if err != nil {
+			return nil, trace.Wrap(err, "failed to get auto-upgrade version")
+		}
 	}
 
 	settings := scriptSettings{
@@ -298,6 +304,9 @@ func (h *Handler) getDatabaseJoinScriptHandle(w http.ResponseWriter, r *http.Req
 	autoUpgrades := automaticUpgrades(h.ClusterFeatures)
 	if autoUpgrades {
 		autoUpgradesVersion, err = h.cfg.AutomaticUpgradesChannels.DefaultVersion(r.Context())
+		if err != nil {
+			return nil, trace.Wrap(err, "failed to get auto-upgrade version")
+		}
 	}
 
 	settings := scriptSettings{
