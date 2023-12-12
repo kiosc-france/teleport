@@ -33,6 +33,7 @@ import (
 
 	"github.com/gravitational/teleport/api/breaker"
 	"github.com/gravitational/teleport/api/client"
+	authpb "github.com/gravitational/teleport/api/client/proto"
 	"github.com/gravitational/teleport/api/client/proxy/transport/transportv1"
 	"github.com/gravitational/teleport/api/defaults"
 	transportv1pb "github.com/gravitational/teleport/api/gen/proto/go/teleport/transport/v1"
@@ -415,4 +416,10 @@ func (c *Client) ClusterDetails(ctx context.Context) (ClusterDetails, error) {
 	}
 
 	return ClusterDetails{FIPS: details.FipsEnabled}, nil
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	clt := authpb.NewAuthServiceClient(c.grpcConn)
+	_, _ = clt.Ping(ctx, &authpb.PingRequest{})
+	return nil
 }
