@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/gravitational/teleport/api/client/proto"
 	"github.com/gravitational/teleport/integration/helpers"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/basichttp"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/constants"
@@ -41,7 +42,8 @@ import (
 )
 
 func createProxyWithChannels(t *testing.T, channels automaticupgrades.Channels) string {
-	require.NoError(t, channels.CheckAndSetDefaults())
+	features := proto.Features{}
+	require.NoError(t, channels.CheckAndSetDefaults(features))
 	testDir := t.TempDir()
 
 	cfg := helpers.InstanceConfig{
