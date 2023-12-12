@@ -33,7 +33,7 @@ Examples of potential use cases include being able to notify users of:
 
 ## Details
 
-Notifications will be stored in the backend database and be of two types:
+Notifications will be stored in the backend and be of two types:
 
 1. User-specific notifications: Targets a single specific user. An example is a notification to notify a user that their access request has been approved.
 2. Global notifications: Targets multiple users. An example is a notification to notify users that there is a new access request needing review.
@@ -46,7 +46,7 @@ Since user-specific notifications are stored by username, notifications for SSO 
 
 Notifications will have a default TTL of 30 days, after which they will be automatically deleted. In some cases, notifications may also automatically be deleted prior to their TTL if configured to do so.
 
-#### Backend Database
+#### Backend=
 
 User-specific notifications will be stored in the backend under the key `/notifications/user/<auth connector>/<the user's username>/<notification id>`.
 
@@ -70,18 +70,16 @@ If this is a global notification, it will be nested in a [`GlobalNotification`](
 message Notification {
    // kind is the resource kind ("notification").
    string kind = 1;
-   // sub_kind is the optional resource subkind. This is unused.
+   // sub_kind represents the unique kind of notification this is, eg. `access-request-approved`
    string sub_kind = 2;
    // version is the resource version.
    string version = 3;
    // id is the UUID of the notification, in UUIDv7 format.
    string id = 4;
-   // type represents the unique type of notification this is, eg. `access-request-approved`.
-   string type = 5;
    // metadata is the notification's metadata. This contains the notification's title, description and labels.
-   Metadata metadata = 6;
+   Metadata metadata = 5;
    // created is when the notification was created, in UNIX time.
-   google.protobuf.Timestamp created = 7;
+   google.protobuf.Timestamp created = 6;
    // ttl is how long the notification should last before expiring. This will default to 30 days if left empty.
    google.protobuf.Duration ttl = 7;
 }
@@ -91,7 +89,7 @@ message Notification {
 
 Each user will have a unique `NotificationState` item for every notification they have interacted with.
 
-This will keep track of whether the user has viewed (clicked on) or dismissed the notification.
+This will keep track of whether the user has clicked on (ie. interacted with) or dismissed the notification.
 
 These will be stored per user per notification in the backend under `/notification/states/<auth connector>/<username>/<notification id>`
 
@@ -100,7 +98,7 @@ deleted as well as its state item.
 
 ```protobuf
 // UserNotificationState represents a notification's state for a user. This is to keep track
-// of whether the user has viewed or dismissed the notification.
+// of whether the user has clicked on or dismissed the notification.
 message UserNotificationState {
    // kind is the resource kind ("user_notification_state").
    string kind = 1;
@@ -108,15 +106,17 @@ message UserNotificationState {
    string sub_kind = 2;
    // version is the resource version.
    string version = 3;
-   // notification_state is the state of this notification for the user. This can be either "viewed" or "dismissed".
+   // notification_state is the state of this notification for the user. This can be either "clicked" or "dismissed".
    NotificationState notification_state = 4;
 }
 
 enum NotificationState {
-   // NOTIFICATION_STATE_VIEWED marks this notification has having been viewed (clicked on) by the user.
-   NOTIFICATION_STATE_VIEWED = 0;
+   // NOTIFICATION_STATE_UNREAD is the default state.
+   NOTIFICATION_STATE_UNREAD = 0;
+   // NOTIFICATION_STATE_CLICKED marks this notification has having been clicked on by the user.
+   NOTIFICATION_STATE_CLICKED = 1;
    // NOTIFICATION_STATE_DISMISSED marks this notification has having been dismissed by the user.
-   NOTIFICATION_STATE_DISMISSED = 1;
+   NOTIFICATION_STATE_DISMISSED = 2;
 }
 ```
 
@@ -131,7 +131,7 @@ This will be stored once per user in the backend under `/notifications/last_seen
 ```protobuf
 // UserLastSeenNotification represents the timestamp of the last notification that they have seen.
 message UserLastSeenNotification  {
-   // kind is the resource kind ("user_notification_state").
+   // kind is the resource kind ("user_last_seen_notification").
    string kind = 1;
    // sub_kind is the optional resource subkind. This is unused.
    string sub_kind = 2;
@@ -149,7 +149,7 @@ These will be stored under `/notification/global/<notification id>`.
 ```protobuf
 // GlobalNotification represents a global notification.
 message GlobalNotification {
-   // kind is the resource kind ("user_notification_state").
+   // kind is the resource kind ("global_notification").
    string kind = 1;
    // sub_kind is the optional resource subkind. This is unused.
    string sub_kind = 2;
@@ -186,90 +186,39 @@ message ByRoles {
 }
 ```
 
-##### Unique Notification Types
+##### Unique Notification SubKinds
 
-Each notification will have a type identifying the type of notification it is. This is so that we can handle notifications in the UI
+Each notification will have a `subkind` identifying the type of notification it is. This is so that we can handle notifications in the UI
 differently based on their type, such as determining what action is performed when interacting with it and which icon it should have.
 
-###### Example types
+###### Example notification subkinds
 
-```go
-// Notification typess for identifying different notification types.
-//
-// Notifications related to the same feature should be grouped together and follow the same naming pattern.
-//
-// After defining a notification type, make sure to keep
-// `web/packages/teleport/src/services/notifications/types.ts` in sync.
-const (
-   // DefaultInformationalType is the default type for an informational notification.
-   DefaultInformationalType = "default-informational"
-   // DefaultWarningType is the default type for a warning notification.
-   DefaultWarningType = "default-warning"
+- `default-informational`: The default subkind for an informational notification.
+- `default-warning`: The default subkind for a warning notification.
+- `user-created-informational`: The subkind for informational notifications that were manually created by a user using `tctl`.
+- `user-created-warning`: The subkind for warning notifications that were manually created by a user using `tctl`.
+- `access-request-pending`: The subkind for a notification for an access request pending review. This is the notification received by a user when an access request needs their review.
+- `access-request-approved`: The subkind for a notification for a user's access request being approved.
+- `access-request-denied`: The subkind for a notification for a user's access request being denied.
 
-   // UserCreatedInformationalType is the type for informational notifications that were manually created by a user using `tctl`.
-   UserCreatedInformationalType = "user-created-informational"
-   // UserCreatedWarningType is the type for warning notifications that were manually created by a user using `tctl`.
-   UserCreatedWarningType = "user-created-warning"
-
-   // AccessRequestPendingType is the type for the notification of an access request pending review. This is the notification received
-   // by a user when an access request needs their review.
-   AccessRequestPendingType = "access-request-pending"
-   // AccessRequestApprovedType is the type for the notification of a user's access request being approved.
-   AccessRequestApprovedType = "access-request-approved"
-   // AccessRequestDeniedType is the type for the notification of a user's access request being denied.
-   AccessRequestDeniedType = "access-request-denied"
-)
-```
-
-For example, if a notification's type is `access-request-pending`, the UI will make the notification redirect to the page for reviewing the access request.
+For example, if a notification's subkind is `access-request-pending`, the UI will make the notification redirect to the page for reviewing the access request.
 
 #### Usage
 
-The notifications service will work primarily by adding, deleting, and fetching notifications from the backend. There will also be a watcher which
-watches for any changes to the database in order to perform real-time actions when a new notification is added.
+The notifications service will work primarily by adding, deleting, and fetching notifications from the backend.
 
-These are some examples of methods of the service which can be called:
+These are some examples of methods the service will expose:
 
-```go
-// Creates a user-specific notification for a user. This will be stored in the backend as a Notification under `/notifications/user/<auth connector>/<username>/<notification.id>`.
-// Will also set any unset defaults such as the UUID, Created date, and ttl.
-NotifyUser(ctx context.Context, username string, notification types.Notification) error
-
-// Creates a global notification that matches users based on the specified role conditions (permissions). This will be stored in the backend as a GlobalNotification under `/notifications/global/<notification.id>`.
-// Will also set any unset defaults such as the UUID, Created date, and ttl.
-NotifyUsersByPermissions(ctx context.Context, roleConditions []types.RoleConditions, notification types.Notification, matchAllConditions bool) error
-
-// Creates a global notification that matches users who have the specified roles. This will be stored in the backend as a GlobalNotification under `/notifications/global/<notification.id>`.
-// Will also set any unset defaults such as the UUID, Created date, and ttl.
-NotifyUsersByRole(ctx context.Context, roles []string, notification types.Notification, matchAllConditions bool) error
-
-// Notifies all users. This will be stored in the backend as a GlobalNotification under `/notifications/global/<notification.id>`.
-// Will also set any unset defaults such as the UUID, Created date, and ttl.
-NotifyAllUsers(ctx context.Context, notification types.Notification) error
-
-// Fetches all notifications for the user, including all matching global notifications.
-// This will filter out notifications not meant for the user, as well as notifications the user has manually dismissed.
-// During this filtering, any notifications marked for expiry which are identified to be older than 30 days will be deleted from the backend.
-// Additionally, any notification IDs found in the user's UserNotificationState for notifications that no longer exist will be removed.
-GetNotificationsForUser(ctx context.Context, user types.User) ([]types.Notification, error)
-
-// Checks if a user matches a global notification's matcher. This will be called by `getNotificationsForUser()` when filtering global notifications.
-// This function may include some hard-coded checks for specific cases, for example, to prevent a user from matching a notification to review their own access request.
-UserMatchesGlobalNotification(ctx context.Context, user types.User, types.GlobalNotification) (bool, error)
-
-// Deletes a global notification from the backend by deleting `/notifications/global/<notification.id>`
-DeleteGlobalNotification(ctx context.Context, notificationID string) error
-
-// Sets the timestamp of the last notification a user has seen by updating the `UserLastSeenNotification` under `/notifications/last_seen/<auth connector>/<username>`
-SetUserLastSeenNotification(ctx context.Context, username string, timestamp time.Time)
-
-// Marks the specified notification as viewed for the user by setting the `UserNotificationState` under `/notification/states/<auth connector>/<username>/<notification id>` to `viewed`.
-MarkNotificationAsViewed(ctx context.Context, username string, notificationID string) error
-
-// Marks the specified notification as dismissed for the user by setting the `UserNotificationState` under `/notification/states/<auth connector>/<username>/<notification id>` to `dismissed`.
-// If the notification is user-specific, this deletes the notification and the notification state.
-MarkNotificationAsDismissed(ctx context.Context, username string, notificationID string) error
-```
+- `NotifyUser` - Sends a notification to a specific user based on the specified username.
+- `NotifyUserByPermissions` - Sends a notification to all users with the specified permission(s).
+- `NotifyUsersByRole` - Sends a notification to all users with the specific role(s).
+- `NotifyAllUsers` - Sends a notification to all users.
+- `GetNotificationsForUser` - Returns all the notifications for a user after filtering.
+- `UserMatchesGlobalNotification` - Checks if a user matches a global notification's matcher.
+- `DeleteGlobalNotification` - Deletes a global notification.
+- `SetUserLastSeenNotification` - Sets the timestamp of the last notification a user has seen.
+- `MarkNotificationAsClicked` - Marks a notification as having been clicked on.
+- `MarkNotificationAsDismissed` - Marks a notification as dismissed.
 
 ##### Example Usage:
 
@@ -305,7 +254,7 @@ notifyUsersByPermissions(roleConditions, notification)
 #### Web UI
 
 Upon logging in and on every page load, a request will be made to fetch all the user's notifications. This fetch will be performed asynchronously so that the login or page loading process is not slowed down by having to wait for the notifications response.
-The notifications service will query the database and return the list of the user's notifications after filtering out those not meant for them. In the case of global notifications, only notifications with matchers that match the user (ie. by role or
+The notifications service will query the backend and return the list of the user's notifications after filtering out those not meant for them. In the case of global notifications, only notifications with matchers that match the user (ie. by role or
 permissions) will be kept. Notifications that the user dismissed will also be filtered out.
 
 This is a simplified diagram of the flow:
@@ -317,7 +266,7 @@ sequenceDiagram
    participant BackendDB as Backend DB
 
    WebUI->>+ProxyAuth: Fetch notifications on login or page load
-   ProxyAuth->>+BackendDB: Query database for notifications and user's notification states
+   ProxyAuth->>+BackendDB: Query backend for notifications and user's notification states
    BackendDB-->>-ProxyAuth: Return notifications and user's notification states
    ProxyAuth->>ProxyAuth: Filter out notifications that don't target the user or that were dismissed
    ProxyAuth-->>-WebUI: Return filtered notifications
@@ -343,13 +292,13 @@ Most of the details regarding the UX are still being discussed and have yet to b
 
 The Web UI will feature a notification icon on the top toolbar, if the user has any unread notifications, this icon will have a badge with the number of unread notifications. Clicking this
 button will open the notifications pane which will list the user's notifications. After the notifications pane is opened, any previously unread notifications will be marked as read (this is done by making a request
-which updates the user's last seen notification timestamp). Any notification that has not yet been viewed (clicked on) will be highlighted to differentiate it from the rest.
+which updates the user's last seen notification timestamp). Any notification that has not yet been clicked on will be highlighted to differentiate it from the rest.
 
 Notifications with long descriptions beyond a certain length will be truncated and optionally expandable to show their full content. The user has the option to dismiss a notification which means
-that they will never see it again. The interactivity of a notification in this list depends on its type which is identified by its [type](#unique-notification-types). Informational and warning notifications (such as those created manually via `tctl`)
+that they will never see it again. The interactivity of a notification in this list depends on its type which is identified by its [subkind](#unique-notification-types). Informational and warning notifications (such as those created manually via `tctl`)
 will be clickable and open a modal with the full text content. Other notifications can be interactive and able to perform specific actions, for example in the case of a new access request notification, it can redirect the user to the page where they can
 review the request (the action any given notification type performs will be manually configured in the Web UI code). Notifications may also have a "quick action" beyond just being clickable, for example, in the case of a notification for an approved access request,
-there may be a quick action button to assume the new roles. Interacting with a notification will mark it as viewed.
+there may be a quick action button to assume the new roles. Interacting with a notification will mark it as having been clicked on.
 
 ##### Stretch goal
 
@@ -412,7 +361,7 @@ To ease the UX transition, any existing cluster alerts created prior to this cha
 all cluster alert functionality will be removed. During this time, attempts to run any cluster alert-related commands will be met with a message informing them that the feature is deprecated
 and that they should use notifications, alongside a basic usage example.
 
-##### Leaf Clusters
+##### Leaf Clusters`
 
 Notifications will be unique to each cluster. However, similar to the behaviour of cluster alerts today, notifications in a leaf cluster will be accessible from the root cluster.
 When a user in the Web UI switches to the leaf cluster, their notifications list will be listing those from the leaf cluster. We can possibly include some type of indicator in the notifications pane in the Web UI to make this clear.
