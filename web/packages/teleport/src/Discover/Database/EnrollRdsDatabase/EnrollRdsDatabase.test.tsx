@@ -24,9 +24,9 @@ import {
   integrationService,
 } from 'teleport/services/integrations';
 import { userEventService } from 'teleport/services/userEvent';
-import { TeleportProvider, getDbMeta } from 'teleport/Discover/fixtures';
 import DatabaseService from 'teleport/services/databases/databases';
 import * as discoveryService from 'teleport/services/discovery/discovery';
+import { ComponentWrapper } from 'teleport/Discover/Fixtures/databases';
 
 import { EnrollRdsDatabase } from './EnrollRdsDatabase';
 
@@ -49,11 +49,7 @@ describe('test EnrollRdsDatabase.tsx', () => {
       .spyOn(integrationService, 'fetchAwsRdsDatabases')
       .mockResolvedValue({ databases: [] });
 
-    render(
-      <TeleportProvider agentMeta={getDbMeta()}>
-        <EnrollRdsDatabase />
-      </TeleportProvider>
-    );
+    render(<Component />);
 
     // select a region from selector.
     const selectEl = screen.getByLabelText(/aws region/i);
@@ -73,11 +69,7 @@ describe('test EnrollRdsDatabase.tsx', () => {
       databases: mockAwsDbs,
     });
 
-    render(
-      <TeleportProvider agentMeta={getDbMeta()}>
-        <EnrollRdsDatabase />
-      </TeleportProvider>
-    );
+    render(<Component />);
 
     // select a region from selector.
     const selectEl = screen.getByLabelText(/aws region/i);
@@ -108,11 +100,7 @@ describe('test EnrollRdsDatabase.tsx', () => {
       .spyOn(DatabaseService.prototype, 'createDatabase')
       .mockResolvedValue({} as any);
 
-    render(
-      <TeleportProvider agentMeta={getDbMeta()}>
-        <EnrollRdsDatabase />
-      </TeleportProvider>
-    );
+    render(<Component />);
 
     // select a region from selector.
     const selectEl = screen.getByLabelText(/aws region/i);
@@ -148,11 +136,7 @@ describe('test EnrollRdsDatabase.tsx', () => {
       aws: [],
     });
 
-    render(
-      <TeleportProvider agentMeta={getDbMeta()}>
-        <EnrollRdsDatabase />
-      </TeleportProvider>
-    );
+    render(<Component />);
 
     // select a region from selector.
     const selectEl = screen.getByLabelText(/aws region/i);
@@ -192,3 +176,9 @@ const mockAwsDbs: AwsRdsDatabase[] = [
     subnets: ['subnet1', 'subnet2'],
   },
 ];
+
+const Component = () => (
+  <ComponentWrapper>
+    <EnrollRdsDatabase />
+  </ComponentWrapper>
+);

@@ -51,7 +51,6 @@ export function AutoEnrollDialog({
     content = (
       <>
         <Flex mb={5} alignItems="center">
-          {' '}
           <Icons.Warning size="large" ml={1} mr={2} color="error.main" />
           <Text>{attempt.statusText}</Text>
         </Flex>

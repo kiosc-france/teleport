@@ -188,18 +188,16 @@ export function AutoDeploy({ toggleDeployMethod }: DeployServiceProp) {
              */}
             {!wantAutoDiscover && (
               <StyledBox mb={5}>
-                <Box>
-                  <Text bold>Step 2 (Optional)</Text>
-                  <Labels
-                    labels={labels}
-                    setLabels={setLabels}
-                    disableBtns={attempt.status === 'processing'}
-                    showLabelMatchErr={showLabelMatchErr}
-                    dbLabels={dbLabels}
-                    autoFocus={false}
-                    region={dbMeta.selectedAwsRdsDb?.region}
-                  />
-                </Box>
+                <Text bold>Step 2 (Optional)</Text>
+                <Labels
+                  labels={labels}
+                  setLabels={setLabels}
+                  disableBtns={attempt.status === 'processing'}
+                  showLabelMatchErr={showLabelMatchErr}
+                  dbLabels={dbLabels}
+                  autoFocus={false}
+                  region={dbMeta.selectedAwsRdsDb?.region}
+                />
               </StyledBox>
             )}
 
@@ -216,13 +214,15 @@ export function AutoDeploy({ toggleDeployMethod }: DeployServiceProp) {
 
             <StyledBox mb={5}>
               <Text bold>Step 4</Text>
-              <Text>Deploy the Teleport Database Service.</Text>
-              {wantAutoDiscover && (
-                <Box mb={2}>
-                  For auto-enrollment, default wildcard label matcher will be
-                  used to match any databases.
-                </Box>
-              )}
+              <Box mb={2}>
+                <Text>Deploy the Teleport Database Service.</Text>
+                {wantAutoDiscover && (
+                  <Text>
+                    For auto-enrollment, default wildcard label matcher will be
+                    used to match any databases.
+                  </Text>
+                )}
+              </Box>
               <ButtonSecondary
                 width="215px"
                 type="submit"

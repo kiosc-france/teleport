@@ -197,6 +197,7 @@ export function EnrollRdsDatabase() {
     if (wantAutoDiscover) {
       enableAutoDiscovery({ selectedRegion: tableData.currRegion });
     } else {
+      const isNewDb = selectedDb.name !== createdDb?.name;
       registerDatabase(
         {
           name: selectedDb.name,
@@ -208,7 +209,7 @@ export function EnrollRdsDatabase() {
         // Corner case where if registering db fails a user can:
         //   1) change region, which will list new databases or
         //   2) select a different database before re-trying.
-        selectedDb.name !== createdDb?.name
+        isNewDb
       );
     }
   }
@@ -318,7 +319,8 @@ export function EnrollRdsDatabase() {
         disableProceed={
           fetchDbAttempt.status === 'processing' ||
           (!wantAutoDiscover && !selectedDb) ||
-          hasIamPermError
+          hasIamPermError ||
+          fetchDbAttempt.status === 'failed'
         }
       />
       {DialogComponent}
