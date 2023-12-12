@@ -714,13 +714,6 @@ func genInstancesLogStr[T any](instances []T, getID func(T) string) string {
 }
 
 func (s *Server) handleEC2Instances(instances *server.EC2Instances) error {
-	// TODO(marco): support AWS SSM Client backed by an integration
-	// TODO(gavin): support assume_role_arn for ec2.
-	ec2Client, err := s.CloudClients.GetAWSSSMClient(s.ctx, instances.Region, cloud.WithAmbientCredentials())
-	if err != nil {
-		return trace.Wrap(err)
-	}
-
 	serverInfos, err := instances.ServerInfos()
 	if err != nil {
 		return trace.Wrap(err)
@@ -737,6 +730,46 @@ func (s *Server) handleEC2Instances(instances *server.EC2Instances) error {
 		return trace.NotFound("all fetched nodes already enrolled")
 	}
 
+	switch {
+	case instances.Integration != "":
+		awsInfo := &types.AWSInfo{
+			AccountID:   instances.AccountID,
+			Region:      instances.Region,
+			Integration: instances.Integration,
+		}
+		// Add EC2 Instances using EICE method
+		for _, ec2Instance := range instances.Instances {
+			eiceNode, err := services.NewAWSNodeFromEC2v1Instance(ec2Instance.OriginalInstance, awsInfo)
+			if err != nil {
+				s.Log.WithError(err).WithField("instance_id", ec2Instance.InstanceID).Warn("Error converting to Teleport EICE Node")
+				continue
+			}
+			if _, err := s.AccessPoint.UpsertNode(s.ctx, eiceNode); err != nil {
+				s.Log.WithError(err).WithField("instance_id", ec2Instance.InstanceID).Warn("Error upserting as Node")
+				continue
+			}
+		}
+	default:
+		if err := s.handleEC2Installation(instances); err != nil {
+			return trace.Wrap(err)
+		}
+	}
+
+	if err := s.emitUsageEvents(instances.MakeEvents()); err != nil {
+		s.Log.WithError(err).Debug("Error emitting usage event.")
+	}
+
+	return nil
+}
+
+func (s *Server) handleEC2Installation(instances *server.EC2Instances) error {
+	// TODO(marco): support AWS SSM Client backed by an integration
+	// TODO(gavin): support assume_role_arn for ec2.
+	ec2Client, err := s.CloudClients.GetAWSSSMClient(s.ctx, instances.Region, cloud.WithAmbientCredentials())
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
 	s.Log.Debugf("Running Teleport installation on these instances: AccountID: %s, Instances: %s",
 		instances.AccountID, genEC2InstancesLogStr(instances.Instances))
 
@@ -750,9 +783,6 @@ func (s *Server) handleEC2Instances(instances *server.EC2Instances) error {
 	}
 	if err := s.ec2Installer.Run(s.ctx, req); err != nil {
 		return trace.Wrap(err)
-	}
-	if err := s.emitUsageEvents(instances.MakeEvents()); err != nil {
-		s.Log.WithError(err).Debug("Error emitting usage event.")
 	}
 	return nil
 }

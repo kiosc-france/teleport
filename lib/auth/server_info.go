@@ -120,6 +120,13 @@ func (a *Server) updateLabelsOnNode(ctx context.Context, node types.Server, serv
 	for _, si := range serverInfos {
 		maps.Copy(newLabels, si.GetNewLabels())
 	}
+
+	// EICE Nodes can't be updated.
+	// TODO(marco):
+	// - Update GetNode/s to always return the ServerInfo labels
+	if node.GetSubKind() == types.SubKindOpenSSHEICENode {
+		return nil
+	}
 	err := a.UpdateLabels(ctx, proto.InventoryUpdateLabelsRequest{
 		ServerID: node.GetName(),
 		Kind:     proto.LabelUpdateKind_SSHServerCloudLabels,

@@ -85,11 +85,14 @@ func NewSessionV1(ctx context.Context, client IntegrationTokenGenerator, region 
 		return nil, trace.Wrap(err)
 	}
 
-	token, err := client.GenerateAWSOIDCToken(ctx, types.GenerateAWSOIDCTokenRequest{
-		Issuer: issuer,
-	})
-	if err != nil {
-		return nil, trace.Wrap(err)
+	var integrationTokenFetcher IntegrationTokenFetcher = func(ctx context.Context) ([]byte, error) {
+		token, err := client.GenerateAWSOIDCToken(ctx, types.GenerateAWSOIDCTokenRequest{
+			Issuer: issuer,
+		})
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		return []byte(token), nil
 	}
 
 	stsSTS := sts.New(sess)
@@ -97,7 +100,7 @@ func NewSessionV1(ctx context.Context, client IntegrationTokenGenerator, region 
 		stsSTS,
 		awsOIDCIntegration.RoleARN,
 		"",
-		IdentityToken(token),
+		integrationTokenFetcher,
 	)
 	awsCredentials := credentials.NewCredentials(roleProvider)
 
@@ -115,4 +118,14 @@ func NewSessionV1(ctx context.Context, client IntegrationTokenGenerator, region 
 	}
 
 	return session, nil
+}
+
+// IntegrationTokenFetcher handles dynamic token generation using a callback function.
+// Useful to embed as a [stscreds.TokenFetcher].
+type IntegrationTokenFetcher func(context.Context) ([]byte, error)
+
+// FetchToken returns a token by calling the callback function.
+func (genFn IntegrationTokenFetcher) FetchToken(ctx context.Context) ([]byte, error) {
+	tokenString, err := genFn(ctx)
+	return tokenString, trace.Wrap(err)
 }
