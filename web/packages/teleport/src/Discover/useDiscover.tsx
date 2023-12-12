@@ -30,6 +30,7 @@ import {
   DiscoverServiceDeployType,
 } from 'teleport/services/userEvent';
 import cfg from 'teleport/config';
+import { DiscoveryConfig } from 'teleport/services/discovery';
 
 import {
   addIndexToViews,
@@ -453,15 +454,26 @@ export function useDiscover<T = any>(): DiscoverContextState<T> {
 }
 
 type BaseMeta = {
-  // resourceName provides a consistent field to refer to for
-  // the resource name since resources can refer to its name
-  // by different field names.
-  // Eg. used in Finish (last step) component.
+  /**
+   * resourceName provides a consistent field to refer to for
+   * the resource name since resources can refer to its name
+   * by different field names.
+   * Eg. used in Finish (last step) component.
+   */
   resourceName: string;
-  // agentMatcherLabels are labels that will be used by the agent
-  // to pick up the newly created database (looks for matching labels).
-  // At least one must match.
+  /**
+   * agentMatcherLabels are labels that will be used by the agent
+   * to pick up the newly created database (looks for matching labels).
+   * At least one must match.
+   */
   agentMatcherLabels: ResourceLabel[];
+  /**
+   * If this field is defined, then user opted for auto discovery.
+   * Auto discover will automatically identify and register resources
+   * in customers infrastructure such as Kubernetes clusters or databases hosted
+   * on cloud platforms like AWS, Azure, etc.
+   */
+  autoDiscoveryConfig?: DiscoveryConfig;
 };
 
 // NodeMeta describes the fields for node resource
@@ -480,8 +492,10 @@ export type DbMeta = BaseMeta & {
   db?: Database;
   integration?: Integration;
   selectedAwsRdsDb?: AwsRdsDatabase;
-  // serviceDeployedMethod flag will be undefined if user skipped
-  // deploying service (service already existed).
+  /**
+   * serviceDeployedMethod flag will be undefined if user skipped
+   * deploying service (service already existed).
+   */
   serviceDeployedMethod?: ServiceDeployMethod;
 };
 
