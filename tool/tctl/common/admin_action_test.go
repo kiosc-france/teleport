@@ -52,6 +52,7 @@ func TestAdminActionMFA(t *testing.T) {
 	s := newAdminActionTestSuite(t)
 
 	t.Run("Users", s.testAdminActionMFA_Users)
+	t.Run("AuthSign", s.testAdminActionMFA_AuthSign)
 }
 
 func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
@@ -99,6 +100,33 @@ func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
 			resourceCreate: createUser,
 			resourceDelete: deleteUser,
 		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_AuthSign(t *testing.T) {
+	ctx := context.Background()
+
+	user, err := types.NewUser("teleuser")
+	require.NoError(t, err)
+	_, err = s.authServer.CreateUser(ctx, user)
+	require.NoError(t, err)
+
+	identityFilePath := filepath.Join(t.TempDir(), "identity")
+
+	t.Run("AuthCommands", func(t *testing.T) {
+		for _, tc := range []adminActionTestCase{
+			{
+				command:    fmt.Sprintf("auth sign --out=%v --user=admin --overwrite", identityFilePath),
+				cliCommand: &tctl.AuthCommand{},
+			}, {
+				command:    fmt.Sprintf("auth sign --out=%v --user=%v --overwrite", identityFilePath, user.GetName()),
+				cliCommand: &tctl.AuthCommand{},
+			},
+		} {
+			t.Run(tc.command, func(t *testing.T) {
+				s.runTestCase(t, ctx, tc)
+			})
+		}
 	})
 }
 
@@ -177,6 +205,10 @@ func newAdminActionTestSuite(t *testing.T) *adminActionTestSuite {
 	username := "admin"
 	adminRole, err := types.NewRole(username, types.RoleSpecV6{
 		Allow: types.RoleConditions{
+			Impersonate: &types.ImpersonateConditions{
+				Users: []string{types.Wildcard},
+				Roles: []string{types.Wildcard},
+			},
 			Rules: []types.Rule{
 				{
 					Resources: []string{types.Wildcard},
