@@ -54,6 +54,7 @@ func TestAdminActionMFA(t *testing.T) {
 
 	t.Run("Users", s.testAdminActionMFA_Users)
 	t.Run("Roles", s.testAdminActionMFA_Roles)
+	t.Run("Tokens", s.testAdminActionMFA_Tokens)
 }
 
 func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
@@ -137,6 +138,61 @@ func (s *adminActionTestSuite) testAdminActionMFA_Roles(t *testing.T) {
 			resourceCreate: createRole,
 			resourceGet:    getRole,
 			resourceDelete: deleteRole,
+		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_Tokens(t *testing.T) {
+	ctx := context.Background()
+
+	token, err := types.NewProvisionToken("teletoken", []types.SystemRole{types.RoleNode}, time.Time{})
+	require.NoError(t, err)
+
+	createToken := func() error {
+		return s.authServer.CreateToken(ctx, token)
+	}
+
+	getToken := func() (types.Resource, error) {
+		return s.authServer.GetToken(ctx, token.GetName())
+	}
+
+	deleteToken := func() error {
+		return s.authServer.DeleteToken(ctx, token.GetName())
+	}
+
+	t.Run("TokensCommands", func(t *testing.T) {
+		for _, tc := range []adminActionTestCase{
+			{
+				command:    fmt.Sprintf("tokens add --type=%v --value=%v", types.RoleNode, token.GetName()),
+				cliCommand: &tctl.TokensCommand{},
+				cleanup:    deleteToken,
+			}, {
+				command:    fmt.Sprintf("tokens rm %v", token.GetName()),
+				cliCommand: &tctl.TokensCommand{},
+				setup:      createToken,
+				cleanup:    deleteToken,
+			},
+		} {
+			t.Run(tc.command, func(t *testing.T) {
+				s.runTestCase(t, ctx, tc)
+			})
+		}
+	})
+
+	t.Run("ResourceCommands", func(t *testing.T) {
+		s.testAdminActionMFA_ResourceCommand(t, ctx, resourceCommandTestCase{
+			resource:       token,
+			resourceCreate: createToken,
+			resourceDelete: deleteToken,
+		})
+	})
+
+	t.Run("EditCommand", func(t *testing.T) {
+		s.testAdminActionMFA_EditCommand(t, ctx, editCommandTestCase{
+			resourceRef:    getResourceRef(token),
+			resourceCreate: createToken,
+			resourceGet:    getToken,
+			resourceDelete: deleteToken,
 		})
 	})
 }
