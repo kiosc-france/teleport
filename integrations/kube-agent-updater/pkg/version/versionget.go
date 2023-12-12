@@ -31,7 +31,10 @@ import (
 // the result to reduce io and avoid potential rate-limits and is safe to call
 // multiple times over a short period.
 type Getter interface {
+	// GetVersion returns the target image version.
 	GetVersion(context.Context) (string, error)
+	// SetHeader sets the header values. The existing header will be overwritten.
+	SetHeader(header, value string)
 }
 
 // ValidVersionChange receives the current version and the candidate next version
@@ -39,11 +42,14 @@ type Getter interface {
 func ValidVersionChange(ctx context.Context, current, next string) bool {
 	// TODO: clarify rollback constraints regarding previous version and add a "previous" parameter
 	log := ctrllog.FromContext(ctx).V(1)
+
 	// Cannot upgrade to a non-valid version
-	if !semver.IsValid(next) {
+	next, err := EnsureSemver(next)
+	if err != nil {
 		log.Error(trace.BadParameter("next version is not following semver"), "version change is invalid", "nextVersion", next)
 		return false
 	}
+
 	switch semver.Compare(next, current) {
 	// No need to upgrade if version is the same
 	case 0:

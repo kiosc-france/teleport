@@ -36,8 +36,9 @@ import (
 // order to avoid spamming the version server in case of reconciliation errors.
 // use BasicHTTPVersionGetter if you need to get a version.
 type basicHTTPVersionClient struct {
-	baseURL *url.URL
-	client  *basichttp.Client
+	baseURL      *url.URL
+	client       *basichttp.Client
+	extraHeaders map[string]string
 }
 
 // Get sends an HTTP GET request and returns the version prefixed by "v".
@@ -45,13 +46,20 @@ type basicHTTPVersionClient struct {
 // body to contain a valid semver tag without the "v".
 func (b *basicHTTPVersionClient) Get(ctx context.Context) (string, error) {
 	versionURL := b.baseURL.JoinPath(constants.VersionPath)
-	body, err := b.client.GetContent(ctx, *versionURL)
+	body, err := b.client.GetContentWithHeaders(ctx, *versionURL, b.extraHeaders)
 	if err != nil {
 		return "", trace.Wrap(err)
 	}
 	// We trim spaces because the value might end with one or many newlines
 	version, err := EnsureSemver(strings.TrimSpace(string(body)))
 	return version, trace.Wrap(err)
+}
+
+// SetHeader sets the header value. The existing header will be overwritten.
+func (b *basicHTTPVersionClient) SetHeader(header, value string) {
+	if b.extraHeaders != nil {
+		b.extraHeaders[header] = value
+	}
 }
 
 // BasicHTTPVersionGetter gets the version from an HTTP response containing
@@ -62,10 +70,15 @@ func (b *basicHTTPVersionClient) Get(ctx context.Context) (string, error) {
 // The structure implements the version.Getter interface.
 type BasicHTTPVersionGetter struct {
 	versionGetter func(context.Context) (string, error)
+	client        *basicHTTPVersionClient
 }
 
 func (g BasicHTTPVersionGetter) GetVersion(ctx context.Context) (string, error) {
 	return g.versionGetter(ctx)
+}
+
+func (g BasicHTTPVersionGetter) SetHeader(header, value string) {
+	g.client.SetHeader(header, value)
 }
 
 func NewBasicHTTPVersionGetter(baseURL *url.URL) Getter {
@@ -73,9 +86,13 @@ func NewBasicHTTPVersionGetter(baseURL *url.URL) Getter {
 		Timeout: constants.HTTPTimeout,
 	}
 	httpVersionClient := &basicHTTPVersionClient{
-		baseURL: baseURL,
-		client:  &basichttp.Client{Client: client},
+		baseURL:      baseURL,
+		client:       &basichttp.Client{Client: client},
+		extraHeaders: make(map[string]string),
 	}
 
-	return BasicHTTPVersionGetter{cache.NewTimedMemoize[string](httpVersionClient.Get, constants.CacheDuration).Get}
+	return BasicHTTPVersionGetter{
+		versionGetter: cache.NewTimedMemoize[string](httpVersionClient.Get, constants.CacheDuration).Get,
+		client:        httpVersionClient,
+	}
 }

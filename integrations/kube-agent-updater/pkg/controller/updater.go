@@ -27,6 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
+	kubeversionupdater "github.com/gravitational/teleport/integrations/kube-agent-updater"
+	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/constants"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/img"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/maintenance"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/version"
@@ -54,6 +56,10 @@ func (r *VersionUpdater) GetVersion(ctx context.Context, obj client.Object, curr
 		return nil, &MaintenanceNotTriggeredError{}
 	}
 	log.Info("Maintenance triggered, getting new version")
+
+	// Set agent metadata headers
+	r.versionGetter.SetHeader(constants.AgentVersionHeader, currentVersion)
+	r.versionGetter.SetHeader(constants.UpdaterVersionHeader, kubeversionupdater.Version)
 
 	// Get the next version
 	nextVersion, err := r.versionGetter.GetVersion(ctx)

@@ -31,4 +31,10 @@ const (
 	VersionPath   = "version"
 	HTTPTimeout   = 10 * time.Second
 	CacheDuration = time.Minute
+
+	// AgentVersionHeader defines the header that contains the teleport agent version metadata.
+	AgentVersionHeader = "agent-version"
+
+	// UpdaterVersionHeader defines the header that contains the teleport updater version metadata.
+	UpdaterVersionHeader = "updater-version"
 )

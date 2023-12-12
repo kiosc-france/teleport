@@ -29,9 +29,10 @@ import (
 	"github.com/stretchr/testify/require"
 	core "k8s.io/api/core/v1"
 
+	kubeversionupdater "github.com/gravitational/teleport/integrations/kube-agent-updater"
+	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/constants"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/img"
 	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/maintenance"
-	"github.com/gravitational/teleport/integrations/kube-agent-updater/pkg/version"
 )
 
 const (
@@ -71,7 +72,8 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 		releaseRegistry     string
 		releasePath         string
 		currentVersion      string
-		versionGetter       version.Getter
+		targetVersion       string
+		targetError         error
 		maintenanceTriggers []maintenance.Trigger
 		imageCheckers       []img.Validator
 		assertErr           require.ErrorAssertionFunc
@@ -82,7 +84,7 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			releaseRegistry:     defaultTestRegistry,
 			releasePath:         defaultTestPath,
 			currentVersion:      versionMid,
-			versionGetter:       version.NewGetterMock(versionHigh, nil),
+			targetVersion:       versionHigh,
 			maintenanceTriggers: []maintenance.Trigger{alwaysTrigger},
 			imageCheckers:       []img.Validator{alwaysValid},
 			assertErr:           require.NoError,
@@ -93,7 +95,7 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			releaseRegistry:     defaultTestRegistry,
 			releasePath:         defaultTestPath,
 			currentVersion:      "",
-			versionGetter:       version.NewGetterMock(versionHigh, nil),
+			targetVersion:       versionHigh,
 			maintenanceTriggers: []maintenance.Trigger{alwaysTrigger},
 			imageCheckers:       []img.Validator{alwaysValid},
 			assertErr:           require.NoError,
@@ -104,7 +106,7 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			releaseRegistry:     defaultTestRegistry,
 			releasePath:         defaultTestPath,
 			currentVersion:      versionMid,
-			versionGetter:       version.NewGetterMock(versionMid, nil),
+			targetVersion:       versionMid,
 			maintenanceTriggers: []maintenance.Trigger{alwaysTrigger},
 			imageCheckers:       []img.Validator{alwaysValid},
 			assertErr:           errorIsType(&NoNewVersionError{}),
@@ -115,7 +117,7 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			releaseRegistry:     defaultTestRegistry,
 			releasePath:         defaultTestPath,
 			currentVersion:      versionMid,
-			versionGetter:       version.NewGetterMock(versionHigh, nil),
+			targetVersion:       versionHigh,
 			maintenanceTriggers: []maintenance.Trigger{neverTrigger},
 			imageCheckers:       []img.Validator{alwaysValid},
 			assertErr:           errorIsType(&MaintenanceNotTriggeredError{}),
@@ -126,7 +128,7 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			releaseRegistry:     defaultTestRegistry,
 			releasePath:         defaultTestPath,
 			currentVersion:      versionMid,
-			versionGetter:       version.NewGetterMock(versionHigh, nil),
+			targetVersion:       versionHigh,
 			maintenanceTriggers: []maintenance.Trigger{alwaysTrigger},
 			imageCheckers:       []img.Validator{neverValid},
 			assertErr:           errorIsType(&trace.TrustError{}),
@@ -137,7 +139,8 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			releaseRegistry:     defaultTestRegistry,
 			releasePath:         defaultTestPath,
 			currentVersion:      versionMid,
-			versionGetter:       version.NewGetterMock("", &trace.ConnectionProblemError{}),
+			targetVersion:       "",
+			targetError:         &trace.ConnectionProblemError{},
 			maintenanceTriggers: []maintenance.Trigger{alwaysTrigger},
 			imageCheckers:       []img.Validator{neverValid},
 			assertErr:           errorIsType(&trace.ConnectionProblemError{}),
@@ -154,8 +157,18 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			baseImage, err := reference.ParseNamed(tt.releaseRegistry + "/" + tt.releasePath)
 			require.NoError(t, err)
 
+			headers := make(map[string]string)
+			vg := &mockVersionGetter{
+				MockGetVersion: func(ctx context.Context) (string, error) {
+					return tt.targetVersion, tt.targetError
+				},
+				MockSetHeader: func(header, value string) {
+					headers[header] = value
+				},
+			}
+
 			updater := VersionUpdater{
-				versionGetter:       tt.versionGetter,
+				versionGetter:       vg,
 				imageValidators:     tt.imageCheckers,
 				maintenanceTriggers: tt.maintenanceTriggers,
 				baseImage:           baseImage,
@@ -172,7 +185,33 @@ func Test_VersionUpdater_GetVersion(t *testing.T) {
 			} else {
 				require.NotNil(t, image)
 				require.Equal(t, tt.expectedImage, image.String())
+
+				// Verify expected headers were set
+				expectedHeaders := map[string]string{
+					constants.AgentVersionHeader:   "v" + tt.currentVersion,
+					constants.UpdaterVersionHeader: kubeversionupdater.Version,
+				}
+				require.Equal(t, expectedHeaders, headers)
 			}
 		})
+	}
+}
+
+// mockVersionGetter is a mock versionGetter to be used for tests.
+type mockVersionGetter struct {
+	MockGetVersion func(ctx context.Context) (string, error)
+	MockSetHeader  func(header, value string)
+}
+
+func (m *mockVersionGetter) GetVersion(ctx context.Context) (string, error) {
+	if m.MockGetVersion != nil {
+		return m.MockGetVersion(ctx)
+	}
+	return "", trace.NotImplemented("GetVersion not implemented")
+}
+
+func (m *mockVersionGetter) SetHeader(header string, value string) {
+	if m.MockGetVersion != nil {
+		m.MockSetHeader(header, value)
 	}
 }
