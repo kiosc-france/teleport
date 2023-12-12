@@ -41,7 +41,9 @@ import (
 	wantypes "github.com/gravitational/teleport/lib/auth/webauthntypes"
 	libclient "github.com/gravitational/teleport/lib/client"
 	libmfa "github.com/gravitational/teleport/lib/client/mfa"
+	"github.com/gravitational/teleport/lib/modules"
 	"github.com/gravitational/teleport/lib/service/servicecfg"
+	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/utils"
 	tctl "github.com/gravitational/teleport/tool/tctl/common"
 	testserver "github.com/gravitational/teleport/tool/teleport/testenv"
@@ -52,6 +54,7 @@ func TestAdminActionMFA(t *testing.T) {
 	s := newAdminActionTestSuite(t)
 
 	t.Run("Users", s.testAdminActionMFA_Users)
+	t.Run("AccessRequests", s.testAdminActionMFA_AccessRequests)
 }
 
 func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
@@ -99,6 +102,83 @@ func (s *adminActionTestSuite) testAdminActionMFA_Users(t *testing.T) {
 			resourceCreate: createUser,
 			resourceDelete: deleteUser,
 		})
+	})
+}
+
+func (s *adminActionTestSuite) testAdminActionMFA_AccessRequests(t *testing.T) {
+	ctx := context.Background()
+
+	role, err := types.NewRole("telerole", types.RoleSpecV6{
+		Allow: types.RoleConditions{
+			Request: &types.AccessRequestConditions{
+				Roles: []string{teleport.PresetAccessRoleName},
+			},
+		},
+	})
+	require.NoError(t, err)
+	_, err = s.authServer.CreateRole(ctx, role)
+	require.NoError(t, err)
+
+	user, err := types.NewUser("teleuser")
+	require.NoError(t, err)
+	user.SetRoles([]string{role.GetName()})
+	_, err = s.authServer.CreateUser(ctx, user)
+	require.NoError(t, err)
+
+	accessRequest, err := services.NewAccessRequest(user.GetName(), teleport.PresetAccessRoleName)
+	require.NoError(t, err)
+	accessRequest.SetThresholds([]types.AccessReviewThreshold{{
+		Name:    "one",
+		Approve: 1,
+		Deny:    1,
+	}})
+
+	createAccessRequest := func() error {
+		return s.authServer.CreateAccessRequest(ctx, accessRequest)
+	}
+
+	deleteAllAccessRequests := func() error {
+		return s.authServer.DeleteAllAccessRequests(ctx)
+	}
+
+	t.Run("AccessRequestCommands", func(t *testing.T) {
+		for _, tc := range []adminActionTestCase{
+			{
+				// creating an access request on behalf of another user requires admin MFA.
+				command:    fmt.Sprintf("requests create --roles=%v %v", teleport.PresetAccessRoleName, user.GetName()),
+				cliCommand: &tctl.AccessRequestCommand{},
+				cleanup:    deleteAllAccessRequests,
+			}, {
+				command:    fmt.Sprintf("requests approve %v", accessRequest.GetName()),
+				cliCommand: &tctl.AccessRequestCommand{},
+				setup:      createAccessRequest,
+				cleanup:    deleteAllAccessRequests,
+			}, {
+				command:    fmt.Sprintf("requests deny %v", accessRequest.GetName()),
+				cliCommand: &tctl.AccessRequestCommand{},
+				setup:      createAccessRequest,
+				cleanup:    deleteAllAccessRequests,
+			}, {
+				command:    fmt.Sprintf("requests review %v --author=admin --approve", accessRequest.GetName()),
+				cliCommand: &tctl.AccessRequestCommand{},
+				setup:      createAccessRequest,
+				cleanup:    deleteAllAccessRequests,
+			}, {
+				command:    fmt.Sprintf("requests review %v --author=admin --deny", accessRequest.GetName()),
+				cliCommand: &tctl.AccessRequestCommand{},
+				setup:      createAccessRequest,
+				cleanup:    deleteAllAccessRequests,
+			}, {
+				command:    fmt.Sprintf("requests rm %v", accessRequest.GetName()),
+				cliCommand: &tctl.AccessRequestCommand{},
+				setup:      createAccessRequest,
+				cleanup:    deleteAllAccessRequests,
+			},
+		} {
+			t.Run(tc.command, func(t *testing.T) {
+				s.runTestCase(t, ctx, tc)
+			})
+		}
 	})
 }
 
@@ -154,7 +234,11 @@ type adminActionTestSuite struct {
 
 func newAdminActionTestSuite(t *testing.T) *adminActionTestSuite {
 	t.Helper()
+
 	ctx := context.Background()
+	modules.SetTestModules(t, &modules.TestModules{
+		TestBuildType: modules.BuildEnterprise,
+	})
 
 	authPref, err := types.NewAuthPreference(types.AuthPreferenceSpecV2{
 		Type:         constants.Local,
@@ -177,6 +261,9 @@ func newAdminActionTestSuite(t *testing.T) *adminActionTestSuite {
 	username := "admin"
 	adminRole, err := types.NewRole(username, types.RoleSpecV6{
 		Allow: types.RoleConditions{
+			ReviewRequests: &types.AccessReviewConditions{
+				Roles: []string{types.Wildcard},
+			},
 			Rules: []types.Rule{
 				{
 					Resources: []string{types.Wildcard},
