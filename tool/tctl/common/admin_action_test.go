@@ -179,6 +179,17 @@ func (s *adminActionTestSuite) testAdminActionMFA_AccessRequests(t *testing.T) {
 				s.runTestCase(t, ctx, tc)
 			})
 		}
+
+		// Creating an access request for yourself should not require admin MFA.
+		t.Run("OK owner creating access request without MFA", func(t *testing.T) {
+			err := runTestSubCase(t, ctx, s.userClientNoMFA, adminActionTestCase{
+				command:    fmt.Sprintf("requests create --roles=%v %v", teleport.PresetAccessRoleName, "admin"),
+				cliCommand: &tctl.AccessRequestCommand{},
+				setup:      createAccessRequest,
+				cleanup:    deleteAllAccessRequests,
+			})
+			require.NoError(t, err)
+		})
 	})
 }
 
@@ -262,6 +273,9 @@ func newAdminActionTestSuite(t *testing.T) *adminActionTestSuite {
 	adminRole, err := types.NewRole(username, types.RoleSpecV6{
 		Allow: types.RoleConditions{
 			ReviewRequests: &types.AccessReviewConditions{
+				Roles: []string{types.Wildcard},
+			},
+			Request: &types.AccessRequestConditions{
 				Roles: []string{types.Wildcard},
 			},
 			Rules: []types.Rule{
