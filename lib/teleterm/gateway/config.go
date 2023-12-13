@@ -20,6 +20,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"net"
 	"runtime"
@@ -58,13 +59,19 @@ type Config struct {
 	LocalAddress string
 	// Protocol is the gateway protocol
 	Protocol string
+	// CertPath is deprecated, use the Cert field instead.
 	// CertPath specifies the path to the user certificate that the local proxy
 	// uses to connect to the Teleport Proxy. The path may depend on the type
 	// and the parameters of the gateway.
+	// TODO(ravicious): Refactor db gateways to use Cert and support MFA.
 	CertPath string
+	// KeyPath is deprecated, use the Cert field instead.
 	// KeyPath specifies the path to the private key of the cert specified in
 	// the CertPath. This is usually the private key of the user profile.
+	// TODO(ravicious): Refactor db gateways to use Cert and support MFA.
 	KeyPath string
+	// Cert is used by the local proxy to connect to the Teleport proxy.
+	Cert tls.Certificate
 	// Insecure
 	Insecure bool
 	// ClusterName is the Teleport cluster name.
@@ -99,7 +106,7 @@ type Config struct {
 // accepted by the gateway but cannot be proxied because the cert used by the gateway has expired.
 //
 // Handling of the connection is blocked until the function returns.
-type OnExpiredCertFunc func(context.Context, Gateway) error
+type OnExpiredCertFunc func(context.Context, Gateway) (tls.Certificate, error)
 
 // CheckAndSetDefaults checks and sets the defaults
 func (c *Config) CheckAndSetDefaults() error {
@@ -146,6 +153,10 @@ func (c *Config) CheckAndSetDefaults() error {
 		c.RootClusterCACertPoolFunc = func(_ context.Context) (*x509.CertPool, error) {
 			return x509.NewCertPool(), nil
 		}
+	}
+
+	if (c.Cert == tls.Certificate{}) {
+		return trace.BadParameter("Cert cannot be nil")
 	}
 
 	c.Log = c.Log.WithFields(logrus.Fields{

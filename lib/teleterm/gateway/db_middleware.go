@@ -43,6 +43,7 @@ type dbMiddleware struct {
 //
 // In the future, DBCertChecker is going to be extended so that it's used by both tsh and Connect
 // and this middleware will be removed.
+// TODO: We'll have to pull the plug and extend DBCertChecker.
 func (m *dbMiddleware) OnNewConnection(ctx context.Context, lp *alpn.LocalProxy, conn net.Conn) error {
 	err := lp.CheckDBCerts(m.dbRoute)
 	if err == nil {

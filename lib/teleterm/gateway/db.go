@@ -79,7 +79,9 @@ func makeDatabaseGateway(cfg Config) (Database, error) {
 			log:     d.cfg.Log,
 			dbRoute: d.cfg.RouteToDatabase(),
 			onExpiredCert: func(ctx context.Context) error {
-				return trace.Wrap(d.cfg.OnExpiredCert(ctx, d))
+				// TODO: Make use of the cert here.
+				_, err := d.cfg.OnExpiredCert(ctx, d)
+				return trace.Wrap(err)
 			},
 		}
 	}

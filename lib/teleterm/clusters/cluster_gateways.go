@@ -20,9 +20,11 @@ package clusters
 
 import (
 	"context"
+	"crypto/tls"
 
 	"github.com/gravitational/trace"
 
+	"github.com/gravitational/teleport/api/mfa"
 	"github.com/gravitational/teleport/lib/teleterm/api/uri"
 	"github.com/gravitational/teleport/lib/teleterm/gateway"
 	"github.com/gravitational/teleport/lib/tlsca"
@@ -41,6 +43,7 @@ type CreateGatewayParams struct {
 	TCPPortAllocator gateway.TCPPortAllocator
 	OnExpiredCert    gateway.OnExpiredCertFunc
 	KubeconfigsDir   string
+	MFAPrompt        mfa.Prompt
 }
 
 // CreateGateway creates a gateway
@@ -111,19 +114,22 @@ func (c *Cluster) createKubeGateway(ctx context.Context, params CreateGatewayPar
 		return nil, trace.Wrap(err)
 	}
 
+	var cert tls.Certificate
+	var err error
+
 	if err := AddMetadataToRetryableError(ctx, func() error {
-		return trace.Wrap(c.reissueKubeCert(ctx, kube))
+		cert, err = c.reissueKubeCert(ctx, kube, params.MFAPrompt)
+		return trace.Wrap(err)
 	}); err != nil {
 		return nil, trace.Wrap(err)
 	}
 
-	// TODO support TargetUser (--as), TargetGroups (--as-groups), TargetSubresourceName (--kube-namespace).
+	// TODO(ravicious): Support TargetUser (--as), TargetGroups (--as-groups), TargetSubresourceName (--kube-namespace).
 	gw, err := gateway.New(gateway.Config{
 		LocalPort:                     params.LocalPort,
 		TargetURI:                     params.TargetURI,
 		TargetName:                    kube,
-		KeyPath:                       c.status.KeyPath(),
-		CertPath:                      c.status.KubeCertPathForCluster(c.clusterClient.SiteName, kube),
+		Cert:                          cert,
 		Insecure:                      c.clusterClient.InsecureSkipVerify,
 		WebProxyAddr:                  c.clusterClient.WebProxyAddr,
 		Log:                           c.Log,
@@ -140,17 +146,37 @@ func (c *Cluster) createKubeGateway(ctx context.Context, params CreateGatewayPar
 }
 
 // ReissueGatewayCerts reissues certificate for provided gateway.
-func (c *Cluster) ReissueGatewayCerts(ctx context.Context, g gateway.Gateway) error {
+func (c *Cluster) ReissueGatewayCerts(ctx context.Context, g gateway.Gateway, mfaPrompt mfa.Prompt) (tls.Certificate, error) {
+	// ReissueGatewayCerts is called when the cert expires, after the user has logged in again.
+
+	// ReissueGatewayCerts simply needs to be rearchitected to call IssueUserCertsWithMFA. Instead of
+	// persisting the cert to disk and then reloading it in the proxy, it needs to return the cert.
+	// Maybe we can temporarily change it so that it supports both scenarios, this way we can for now
+	// update only the kube proxy to support MFA.
 	switch {
 	case g.TargetURI().IsDB():
 		db, err := gateway.AsDatabase(g)
 		if err != nil {
-			return trace.Wrap(err)
+			return tls.Certificate{}, trace.Wrap(err)
 		}
-		return trace.Wrap(c.reissueDBCerts(ctx, db.RouteToDatabase()))
+		err = c.reissueDBCerts(ctx, db.RouteToDatabase())
+		if err != nil {
+			return tls.Certificate{}, trace.Wrap(err)
+		}
+
+		// DB gateways still store certs on disk, so they need to load it after reissue.
+		err = g.ReloadCert()
+		if err != nil {
+			return tls.Certificate{}, trace.Wrap(err)
+		}
+
+		// Return an empty cert even if there is no error. DB gateways do not utilize certs returned
+		// from ReissueGatewayCerts, at least not until we add support for MFA to them.
+		return tls.Certificate{}, nil
 	case g.TargetURI().IsKube():
-		return trace.Wrap(c.reissueKubeCert(ctx, g.TargetName()))
+		cert, err := c.reissueKubeCert(ctx, g.TargetName(), mfaPrompt)
+		return cert, trace.Wrap(err)
 	default:
-		return nil
+		return tls.Certificate{}, trace.NotImplemented("ReissueGatewayCerts does not support this gateway kind %v", g.TargetURI().String())
 	}
 }
