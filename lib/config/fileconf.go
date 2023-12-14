@@ -1679,6 +1679,8 @@ type Database struct {
 	Description string `yaml:"description,omitempty"`
 	// Protocol is the database type e.g. postgres, mysql, etc.
 	Protocol string `yaml:"protocol"`
+	// Protocol is the database type e.g. postgres, mysql, etc.
+	Password string `yaml:"password"`
 	// URI is the database address to connect to.
 	URI string `yaml:"uri"`
 	// CACertFile is an optional path to the database CA certificate.

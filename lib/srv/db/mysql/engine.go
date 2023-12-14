@@ -277,6 +277,9 @@ func (e *Engine) connect(ctx context.Context, sessionCtx *common.Session) (*clie
 			return nil, trace.Wrap(err)
 		}
 		user = services.MakeAzureDatabaseLoginUsername(sessionCtx.Database, user)
+
+	case sessionCtx.Database.IsCloudHosted():
+		password = sessionCtx.Database.GetPassword()
 	}
 
 	// Use default net dialer unless it is already initialized.

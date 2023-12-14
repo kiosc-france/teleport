@@ -359,6 +359,7 @@ db_service:
     protocol: "{{ .StaticDatabaseProtocol }}"
     {{- if .StaticDatabaseURI }}
     uri: "{{ .StaticDatabaseURI }}"
+    password: "{{ .StaticDatabasePassword }}"
     {{- end}}
     {{- if .DatabaseCACertFile }}
     tls:
@@ -556,6 +557,8 @@ type DatabaseSampleFlags struct {
 	StaticDatabaseName string
 	// StaticDatabaseProtocol static databse protocol provided by the user.
 	StaticDatabaseProtocol string
+	// StaticDatabasPassword static databse protocol provided by the user.
+	StaticDatabasePassword string
 	// StaticDatabaseURI static database URI provided by the user.
 	StaticDatabaseURI string
 	// StaticDatabaseStaticLabels list of database static labels provided by

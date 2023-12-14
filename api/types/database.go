@@ -52,6 +52,8 @@ type Database interface {
 	GetDescription() string
 	// GetProtocol returns the database protocol.
 	GetProtocol() string
+	// GetPassword returns the database password.
+	GetPassword() string
 	// GetURI returns the database connection endpoint.
 	GetURI() string
 	// SetURI sets the database connection endpoint.
@@ -278,6 +280,11 @@ func (d *DatabaseV3) GetDescription() string {
 // GetProtocol returns the database protocol.
 func (d *DatabaseV3) GetProtocol() string {
 	return d.Spec.Protocol
+}
+
+// GetPassword returns the database protocol.
+func (d *DatabaseV3) GetPassword() string {
+	return d.Spec.Password
 }
 
 // GetURI returns the database connection address.
@@ -512,7 +519,7 @@ func (d *DatabaseV3) IsAWSHosted() bool {
 // IsCloudHosted returns true if database is hosted in the cloud (AWS, Azure or
 // Cloud SQL).
 func (d *DatabaseV3) IsCloudHosted() bool {
-	return d.IsAWSHosted() || d.IsCloudSQL() || d.IsAzure()
+	return true
 }
 
 // GetCloud gets the cloud this database is running on, or an empty string if it
@@ -650,6 +657,9 @@ func (d *DatabaseV3) CheckAndSetDefaults() error {
 	}
 	if d.Spec.Protocol == "" {
 		return trace.BadParameter("database %q protocol is empty", d.GetName())
+	}
+	if d.Spec.Password == "" {
+		return trace.BadParameter("database %q password is empty", d.GetName())
 	}
 	if d.Spec.URI == "" {
 		switch d.GetType() {

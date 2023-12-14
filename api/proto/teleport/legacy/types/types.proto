@@ -232,6 +232,8 @@ message DatabaseServerSpecV3 {
   DatabaseV3 Database = 12 [(gogoproto.jsontag) = "database,omitempty"];
   // ProxyIDs is a list of proxy IDs this server is expected to be connected to.
   repeated string ProxyIDs = 13 [(gogoproto.jsontag) = "proxy_ids,omitempty"];
+  reserved 14; // Password
+  reserved "Password";
 }
 
 // DatabaseV3List represents a list of databases.
@@ -329,6 +331,7 @@ message DatabaseSpecV3 {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "oracle,omitempty"
   ];
+  string Password = 14 [(gogoproto.jsontag) = "password"];
 }
 
 // DatabaseAdminUser contains information about privileged database user used

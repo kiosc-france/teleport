@@ -1646,6 +1646,7 @@ func applyDatabasesConfig(fc *FileConfig, cfg *servicecfg.Config) error {
 			Name:          database.Name,
 			Description:   database.Description,
 			Protocol:      database.Protocol,
+			Password:      database.Password,
 			URI:           database.URI,
 			StaticLabels:  staticLabels,
 			DynamicLabels: dynamicLabels,

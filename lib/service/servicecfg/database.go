@@ -53,6 +53,8 @@ type Database struct {
 	// Protocol is the database type, e.g. postgres or mysql.
 	Protocol string
 	// URI is the database endpoint to connect to.
+	Password string
+	// URI is the database endpoint to connect to.
 	URI string
 	// StaticLabels is a map of database static labels.
 	StaticLabels map[string]string
@@ -153,6 +155,7 @@ func (d *Database) ToDatabase() (types.Database, error) {
 		Labels:      d.StaticLabels,
 	}, types.DatabaseSpecV3{
 		Protocol: d.Protocol,
+		Password: d.Password,
 		URI:      d.URI,
 		CACert:   string(d.TLS.CACert),
 		TLS: types.DatabaseTLS{

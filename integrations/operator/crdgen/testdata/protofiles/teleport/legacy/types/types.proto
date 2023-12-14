@@ -353,6 +353,7 @@ message DatabaseSpecV3 {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "mongo_atlas,omitempty"
   ];
+  string Password = 13 [(gogoproto.jsontag) = "password"];
 }
 
 // DatabaseAdminUser contains information about privileged database user used
